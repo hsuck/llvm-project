@@ -52,6 +52,8 @@
 #include <memory>
 #include <string>
 
+#include "llvm/PAC-experiment/PAC.h"
+
 using namespace llvm;
 
 static cl::opt<bool> EnableCCMP("aarch64-enable-ccmp",
@@ -577,6 +579,8 @@ void AArch64PassConfig::addIRPasses() {
     addPass(createLICMPass());
   }
 
+	addPass(PAC::createOptCpiPass());
+
   TargetPassConfig::addIRPasses();
 
   addPass(createAArch64StackTaggingPass(
@@ -808,6 +812,8 @@ void AArch64PassConfig::addPreEmitPass() {
   if (TM->getOptLevel() != CodeGenOpt::None && EnableCollectLOH &&
       TM->getTargetTriple().isOSBinFormatMachO())
     addPass(createAArch64CollectLOHPass());
+
+	addPass(createAArch64CpiPass());
 }
 
 void AArch64PassConfig::addPreEmitPass2() {

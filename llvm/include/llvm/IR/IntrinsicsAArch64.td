@@ -2679,3 +2679,5 @@ let TargetPrefix = "aarch64" in {
                               [LLVMScalarOrSameVectorWidth<0, llvm_i1_ty>,
                                LLVMMatchType<0>, llvm_i32_ty]>;
 }
+
+include "llvm/PAC-experiment/Intrinsic.td"

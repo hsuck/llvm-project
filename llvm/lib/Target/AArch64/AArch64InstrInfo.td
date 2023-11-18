@@ -8435,3 +8435,5 @@ include "AArch64InstrAtomics.td"
 include "AArch64SVEInstrInfo.td"
 include "AArch64SMEInstrInfo.td"
 include "AArch64InstrGISel.td"
+
+include "llvm/PAC-experiment/AArch64InstrInfo.td"

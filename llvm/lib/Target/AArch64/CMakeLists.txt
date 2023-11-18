@@ -85,9 +85,11 @@ add_llvm_target(AArch64CodeGen
   AArch64TargetTransformInfo.cpp
   SVEIntrinsicOpts.cpp
   AArch64SIMDInstrOpt.cpp
+	PAC-experiment/AArch64CpiPass.cpp
 
   DEPENDS
   intrinsics_gen
+	OptCpiPass
 
   LINK_COMPONENTS
   AArch64Desc
@@ -108,6 +110,9 @@ add_llvm_target(AArch64CodeGen
 
   ADD_TO_COMPONENT
   AArch64
+
+	LINK_LIBS
+	OptCpiPass
 )
 
 add_subdirectory(AsmParser)

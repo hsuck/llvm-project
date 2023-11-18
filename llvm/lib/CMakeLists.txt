@@ -44,6 +44,8 @@ endif()
 add_subdirectory(WindowsDriver)
 add_subdirectory(WindowsManifest)
 
+add_subdirectory(PAC-experiment)
+
 set(LLVMCONFIGLIBRARYDEPENDENCIESINC "${LLVM_BINARY_DIR}/tools/llvm-config/LibraryDependencies.inc")
 
 # Special components which don't have any source attached but aggregate other
