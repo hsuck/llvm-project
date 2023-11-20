@@ -72,6 +72,7 @@ FunctionPass *createAArch64StackTaggingPreRAPass();
 
 // hsuck: PA Pass
 FunctionPass *createAArch64CpiPass();
+FunctionPass *createAArch64InstSelPass();
 
 void initializeAArch64A53Fix835769Pass(PassRegistry&);
 void initializeAArch64A57FPLoadBalancingPass(PassRegistry&);

@@ -648,6 +648,8 @@ bool AArch64PassConfig::addInstSelector() {
       getOptLevel() != CodeGenOpt::None)
     addPass(createAArch64CleanupLocalDynamicTLSPass());
 
+	addPass(createAArch64InstSelPass());
+
   return false;
 }
 

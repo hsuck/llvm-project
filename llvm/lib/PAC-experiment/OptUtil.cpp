@@ -12,9 +12,9 @@ CallInst *OptUtil::createPACIntrinsic(Function &F, Instruction &I,
                                       Value *calledValue,
                                       Intrinsic::ID intrinsicID) {
   const auto calledValueType = calledValue->getType();
-  // Generate Builder for inserting PAC intrinsic
+  // Generate Builder for inserting PA intrinsic
   IRBuilder<> Builder(&I);
-  // Get PAC intrinsic declaration for correct input type
+  // Get PA intrinsic declaration for correct input type
   auto autcall =
       Intrinsic::getDeclaration(F.getParent(), intrinsicID, {calledValueType});
   auto modifier =

@@ -86,6 +86,7 @@ add_llvm_target(AArch64CodeGen
   SVEIntrinsicOpts.cpp
   AArch64SIMDInstrOpt.cpp
 	PAC-experiment/AArch64CpiPass.cpp
+	PAC-experiment/AArch64InstSelPass.cpp
 
   DEPENDS
   intrinsics_gen
