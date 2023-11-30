@@ -1,8 +1,8 @@
 // Author: hsuck
 
 #include "llvm/ADT/Statistic.h"
-#include "llvm/IR/Constant.h"
 #include "llvm/IR/AbstractCallSite.h"
+#include "llvm/IR/Constant.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -11,8 +11,8 @@
 #include "llvm/Support/raw_ostream.h"
 
 // PAC-experiment
-#include "llvm/PAC-experiment/PAC.h"
 #include "llvm/PAC-experiment/OptUtil.h"
+#include "llvm/PAC-experiment/PAC.h"
 
 using namespace llvm;
 using namespace llvm::PAC;
@@ -44,10 +44,13 @@ bool OptCpiPass::runOnFunction(Function &F) {
   // TODO(hsuck): need to add clang option to determine if this pass runs
   errs() << getPassName() << ": " << F.getName() << '\n';
 
+  if (F.hasFnAttribute("no-pac"))
+    return false;
+
   bool modified = false;
   for (auto &BB : F) {
     for (auto &I : BB) {
-      modified = handleInsn(F, I) || modified;
+      modified |= handleInsn(F, I);
     }
   }
   return modified;
@@ -89,23 +92,23 @@ bool OptCpiPass::handleStoreInsn(Function &F, Instruction &I) {
   if (paced == nullptr)
     return false;
 
-	SI->setOperand(0, paced);
+  SI->setOperand(0, paced);
   errs() << getPassName() << ": " << I << '\n';
 
   return true;
 }
 
 bool OptCpiPass::handleCallInsn(Function &F, Instruction &I) {
-	auto CI = dyn_cast<CallInst>(&I);
+  auto CI = dyn_cast<CallInst>(&I);
 
-	// handle indirect call
-	if (CI->isIndirectCall()) {
-		auto calledValue = CI->getCalledOperand();
-		auto paced = createPACIntrinsic(F, I, calledValue, Intrinsic::pa_autcall);
-		CI->setCalledOperand(paced);
-	}
+  // handle indirect call
+  if (CI->isIndirectCall()) {
+    auto calledValue = CI->getCalledOperand();
+    auto paced = createPACIntrinsic(F, I, calledValue, Intrinsic::pa_autcall);
+    CI->setCalledOperand(paced);
+  }
 
-	return true;
+  return true;
 }
 
 CallInst *OptCpiPass::genPACedValue(Function &F, Instruction &I, Value *V) {
@@ -127,6 +130,8 @@ CallInst *OptCpiPass::genPACedValue(Function &F, Instruction &I, Value *V) {
   assert((isa<BitCastOperator>(V) || V->getType() == VTypeInput));
 
   // Create PA intrinsic (pacia)
-  errs() << getPassName() << ": " << "Create pacia intrinsic here\n" << '\n';
+  errs() << getPassName() << ": "
+         << "Create pacia intrinsic here\n"
+         << '\n';
   return createPACIntrinsic(F, I, V, Intrinsic::pa_pacia);
 }

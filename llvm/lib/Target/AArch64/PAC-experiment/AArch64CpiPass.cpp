@@ -69,7 +69,7 @@ bool AArch64CpiPass::runOnMachineFunction(MachineFunction &MF) {
   for (auto &MBB : MF)
     for (auto MIi = MBB.instr_begin(), MIie = MBB.instr_end(); MIi != MIie;
          ++MIi) {
-      found = handleInsn(MBB, MIi) || found;
+      found |= handleInsn(MBB, MIi);
     }
 
   return found;

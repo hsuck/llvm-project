@@ -68,7 +68,7 @@ bool AArch64InstSelPass::runOnMachineFunction(MachineFunction &MF) {
   for (auto &MBB : MF)
     for (auto MIi = MBB.instr_begin(), MIie = MBB.instr_end(); MIi != MIie;
          ++MIi)
-      found = handleInsn(MF, MBB, MIi) || found;
+      found |= handleInsn(MF, MBB, MIi);
 
   return found;
 }

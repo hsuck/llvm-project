@@ -106,20 +106,22 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
 
   bool retVal = false;
   auto &C = M.getContext();
-  uint64_t baseAddr = 0;
+  /* uint64_t baseAddr = 0; */
 
-  if (isa<GetElementPtrInst>(V))
-    baseAddr = dyn_cast<ConstantInt>(dyn_cast<User>(V)->getOperand(1))
-                   ->getLimitedValue();
+  /* if (isa<GetElementPtrInst>(V)) */
+  /*   baseAddr = dyn_cast<ConstantInt>(dyn_cast<User>(V)->getOperand(1)) */
+  /*                  ->getLimitedValue(); */
 
   for (auto i = 0U; i < Ty->getNumElements(); i++) {
     auto elementPtr = builder->CreateGEP(
         Ty, V,
         {
             ConstantInt::get(Type::getInt64Ty(C), 0),
-            ConstantInt::get(Type::getInt64Ty(C), baseAddr + i),
+            /* ConstantInt::get(Type::getInt64Ty(C), baseAddr + i), */
+            ConstantInt::get(Type::getInt64Ty(C), i),
         });
-    auto elementCV = CV->getAggregateElement(baseAddr + i);
+    /* auto elementCV = CV->getAggregateElement(baseAddr + i); */
+    auto elementCV = CV->getAggregateElement(i);
     auto elementTy = Ty->getElementType();
     retVal |= handle(M, elementPtr, elementCV, elementTy);
   }
