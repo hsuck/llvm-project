@@ -84,6 +84,7 @@ AArch64InstSelPass::handleInsn(MachineFunction &MF, MachineBasicBlock &MBB,
   errs() << getPassName() << ": " << *MIi << '\n';
 
   MachineInstr *MI_indcall = findIndirectCallMI(MIi->getNextNode());
+	errs() << getPassName() << ": " << *MI_indcall << '\n';
   if (MI_indcall == nullptr)
     triggerCompilationErrorOrphanAUTCALL(MBB);
 
@@ -150,6 +151,7 @@ inline void AArch64InstSelPass::replaceBranchByAutBranch(
     BMI.add(MI_indcall->getOperand(1));
 
   BMI.add(mod);
+	// Copy arguments
   BMI.copyImplicitOps(*MI_indcall);
 
   // remove original call pseudo instruction

@@ -1,5 +1,6 @@
 add_llvm_library( OptCpiPass
 	OptCpiPass.cpp
+	OptSignGlobalsPass.cpp
 	OptUtil.cpp
 
 	ADDITIONAL_HEADER_DIRS

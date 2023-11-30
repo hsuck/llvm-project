@@ -579,6 +579,7 @@ void AArch64PassConfig::addIRPasses() {
     addPass(createLICMPass());
   }
 
+	addPass(PAC::createOptSignGlobalsPass());
 	addPass(PAC::createOptCpiPass());
 
   TargetPassConfig::addIRPasses();

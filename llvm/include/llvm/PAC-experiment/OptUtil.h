@@ -6,12 +6,14 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Type.h"
+#include "llvm/IR/IRBuilder.h"
 
 namespace llvm {
 namespace PAC {
 namespace OptUtil {
 CallInst *createPACIntrinsic(Function &F, Instruction &I, Value *calledValue,
                              Intrinsic::ID intrinsicID);
+Value *createPACIntrinsic(IRBuilder<> *builder, Module &M, Value *V);
 } // namespace OptUtil
 } // namespace PAC
 } // namespace llvm

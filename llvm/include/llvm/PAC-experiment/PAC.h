@@ -12,6 +12,7 @@ namespace llvm {
 namespace PAC {
 
 Pass *createOptCpiPass();
+Pass *createOptSignGlobalsPass();
 
 } // namespace PAC
 
