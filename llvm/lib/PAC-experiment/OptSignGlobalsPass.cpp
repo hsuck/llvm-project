@@ -59,8 +59,9 @@ bool OptSignGlobalsPass::runOnModule(Module &M) {
       const auto CV = Global->getInitializer();
       Type *CVTy = CV->getType();
 
-      errs() << "value: " << *CV << "\n";
-      errs() << "type: " << *CVTy << "\n";
+      errs() << "Value: " << *CV << "\n";
+      errs() << "Type: " << *CVTy << "\n";
+      errs() << "Global Type: " << *(Global->getType()) << "\n";
 
       // TODO(hsuck): sign this global variable.
       if (handle(M, &*Global, CV, CVTy))
@@ -112,7 +113,7 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
   /*   baseAddr = dyn_cast<ConstantInt>(dyn_cast<User>(V)->getOperand(1)) */
   /*                  ->getLimitedValue(); */
 
-  for (auto i = 0U; i < Ty->getNumElements(); i++) {
+  for (auto i = 0U; i < Ty->getNumElements(); ++i) {
     auto elementPtr = builder->CreateGEP(
         Ty, V,
         {
@@ -134,7 +135,7 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
 
   bool retVal = false;
 
-  for (auto i = 0U; i < Ty->getNumElements(); i++) {
+  for (auto i = 0U; i < Ty->getNumElements(); ++i) {
     auto elementPtr = builder->CreateStructGEP(Ty, V, i);
     auto elementCV = CV->getAggregateElement(i);
     auto elementTy = Ty->getElementType(i);

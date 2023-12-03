@@ -27,8 +27,7 @@ CallInst *OptUtil::createPACIntrinsic(Function &F, Instruction &I,
 Value *OptUtil::createPACIntrinsic(IRBuilder<> *builder, Module &M, Value *V) {
   const auto type = V->getType();
   // Get PA intrinsic declaration for correct input type
-  auto autcall =
-      Intrinsic::getDeclaration(&M, Intrinsic::pa_pacia, {type});
+  auto autcall = Intrinsic::getDeclaration(&M, Intrinsic::pa_pacia, {type});
   auto modifier =
       Constant::getIntegerValue(Type::getInt64Ty(M.getContext()), APInt(64, 0));
 

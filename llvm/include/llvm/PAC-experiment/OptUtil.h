@@ -3,10 +3,10 @@
 #ifndef __OPTUTIL_H__
 #define __OPTUTIL_H__
 
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Type.h"
-#include "llvm/IR/IRBuilder.h"
 
 namespace llvm {
 namespace PAC {

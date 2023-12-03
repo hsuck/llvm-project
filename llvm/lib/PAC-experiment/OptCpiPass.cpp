@@ -70,7 +70,7 @@ bool OptCpiPass::handleInsn(Function &F, Instruction &I) {
   }
   case Instruction::Select: {
     errs() << getPassName() << ": " << I << '\n';
-    /* retVal = handleSelectInsn(F, I); */
+    retVal = handleSelectInsn(F, I);
     break;
   }
   case Instruction::Call: {
@@ -98,14 +98,53 @@ bool OptCpiPass::handleStoreInsn(Function &F, Instruction &I) {
   return true;
 }
 
+bool OptCpiPass::handleSelectInsn(Function &F, Instruction &I) {
+  auto retVal = false;
+
+  for (unsigned int i = 0; i < I.getNumOperands(); ++i) {
+    auto paced = genPACedValue(F, I, I.getOperand(i));
+    if (paced != nullptr) {
+      retVal = true;
+      I.setOperand(i, paced);
+    }
+  }
+
+  return retVal;
+}
+
 bool OptCpiPass::handleCallInsn(Function &F, Instruction &I) {
   auto CI = dyn_cast<CallInst>(&I);
+  /* auto ACS = dyn_cast<AbstractCallSite>(&I); */
+  auto calledFunc = CI->getCalledFunction();
 
   // handle indirect call
   if (CI->isIndirectCall()) {
     auto calledValue = CI->getCalledOperand();
     auto paced = createPACIntrinsic(F, I, calledValue, Intrinsic::pa_autcall);
     CI->setCalledOperand(paced);
+  }
+
+  // handle externel function call
+  if (calledFunc != nullptr && calledFunc->isDeclaration()) {
+    // authenticate args which are code pointers
+    for (unsigned int i = 0; i < CI->arg_size(); ++i) {
+      auto arg = CI->getArgOperand(i);
+      const auto argTy = arg->getType();
+      errs() << "Function arguments:\n";
+      errs() << arg->getName() << ": " << *arg << '\n';
+      errs() << "Type: " << *argTy << '\n';
+      }
+    }
+    errs() << "===================\n";
+
+  } else {
+    // sign args which are code pointers
+    for (unsigned int i = 0; i < CI->arg_size(); ++i) {
+      auto arg = CI->getArgOperand(i);
+      const auto argTy = arg->getType();
+      errs() << arg->getName() << ": " << *arg << '\n';
+      errs() << "Type: " << *argTy << '\n';
+    }
   }
 
   return true;
