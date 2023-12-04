@@ -153,7 +153,12 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
 
   errs() << "Need sign\n";
 
-  auto loaded = builder->CreateLoad(V->getType(), V);
+  LoadInst *loaded = nullptr;
+  if (Ty->isOpaque())
+    loaded = builder->CreateLoad(V->getType(), V);
+  else
+    loaded = builder->CreateLoad(Ty, V);
+
   auto paced = createPACIntrinsic(builder, M, loaded);
   builder->CreateStore(paced, V);
 
