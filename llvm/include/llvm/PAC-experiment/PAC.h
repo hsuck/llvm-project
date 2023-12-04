@@ -11,6 +11,8 @@ namespace llvm {
 
 namespace PAC {
 
+bool isPACFeCfi();
+
 Pass *createOptCpiPass();
 Pass *createOptSignGlobalsPass();
 

@@ -579,8 +579,10 @@ void AArch64PassConfig::addIRPasses() {
     addPass(createLICMPass());
   }
 
-	addPass(PAC::createOptSignGlobalsPass());
-	addPass(PAC::createOptCpiPass());
+	if (PAC::isPACFeCfi()) {
+		addPass(PAC::createOptSignGlobalsPass());
+		addPass(PAC::createOptCpiPass());
+	}
 
   TargetPassConfig::addIRPasses();
 
@@ -649,7 +651,8 @@ bool AArch64PassConfig::addInstSelector() {
       getOptLevel() != CodeGenOpt::None)
     addPass(createAArch64CleanupLocalDynamicTLSPass());
 
-	addPass(createAArch64InstSelPass());
+	if (PAC::isPACFeCfi())
+		addPass(createAArch64InstSelPass());
 
   return false;
 }
@@ -816,7 +819,8 @@ void AArch64PassConfig::addPreEmitPass() {
       TM->getTargetTriple().isOSBinFormatMachO())
     addPass(createAArch64CollectLOHPass());
 
-	addPass(createAArch64CpiPass());
+	if (PAC::isPACFeCfi())
+		addPass(createAArch64CpiPass());
 }
 
 void AArch64PassConfig::addPreEmitPass2() {

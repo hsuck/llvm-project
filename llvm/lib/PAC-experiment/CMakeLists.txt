@@ -2,6 +2,7 @@ add_llvm_library( OptCpiPass
 	OptCpiPass.cpp
 	OptSignGlobalsPass.cpp
 	OptUtil.cpp
+	PAC.cpp
 
 	ADDITIONAL_HEADER_DIRS
 	${LLVM_MAIN_INCLUDE_DIR}/llvm/PAC-experiment
