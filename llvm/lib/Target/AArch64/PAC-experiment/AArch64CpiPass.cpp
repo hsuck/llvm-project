@@ -90,7 +90,7 @@ inline bool AArch64CpiPass::handleInsn(MachineBasicBlock &MBB,
 			lowerPAPACIA(MBB, MI);
 			break;
 		case AArch64::PA_AUTIA:
-			/* lowerPAAUTIA(MBB, MI); */
+			lowerPAAUTIA(MBB, MI);
 			break;
 		case AArch64::PA_AUTCALL:
 			/* lowerPAAUTCALL(MBB, MI); */
@@ -115,6 +115,10 @@ inline bool AArch64CpiPass::isPAIntrinsic(unsigned Opcode) {
 
 void AArch64CpiPass::lowerPAPACIA(MachineBasicBlock &MBB, MachineInstr &MI) {
 	lowerPAIntrinsicCommon(MBB, MI, TII->get(AArch64::PACIA));
+}
+
+void AArch64CpiPass::lowerPAAUTIA(MachineBasicBlock &MBB, MachineInstr &MI) {
+	lowerPAIntrinsicCommon(MBB, MI, TII->get(AArch64::AUTIA));
 }
 
 void AArch64CpiPass::lowerPAIntrinsicCommon(MachineBasicBlock &MBB,
