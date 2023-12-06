@@ -122,40 +122,22 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I) {
   }
 
   // handle externel function call
-  if (calledFunc != nullptr && calledFunc->isDeclaration() && !calledFunc->hasFnAttribute("pac-experiment")) {
+  if (calledFunc != nullptr && calledFunc->isDeclaration() &&
+      !calledFunc->hasFnAttribute("pac-experiment")) {
     // authenticate args which are code pointers
     errs() << "External function arguments:\n";
     for (unsigned int i = 0; i < CI->arg_size(); ++i) {
       auto arg = CI->getArgOperand(i);
       const auto argTy = arg->getType();
-      const bool enableOpaquePtr =
-          argTy->isPointerTy() ? dyn_cast<PointerType>(argTy)->isOpaque()
-                               : false;
+
       errs() << *arg << '\n';
       errs() << "Type: " << *argTy << '\n';
-
-      if (enableOpaquePtr) {
-        if (argTy->isPointerTy() && !isa<Function>(arg) &&
-            !isa<Constant>(arg)) {
-          auto loadedArg = dyn_cast<LoadInst>(arg);
-          if (loadedArg != nullptr) {
-            errs() << "arg is a load insn\n";
-            auto pointee = loadedArg->getPointerOperand();
-            errs() << *pointee << "\n";
-            errs() << pointee->getType()->getTypeID() << "\n";
-            if (pointee->getType()->isFunctionTy()) {
-              errs() << "Need auth\n";
-            }
-          }
-        }
-      } else {
-        if (argTy->isPointerTy() &&
-            argTy->getPointerElementType()->isFunctionTy() &&
-            !isa<Function>(arg) && !isa<Constant>(arg)) {
-          errs() << "Need auth\n";
-          auto paced = createPACIntrinsic(F, I, arg, Intrinsic::pa_autia);
-          CI->setArgOperand(i, paced);
-        }
+      if (argTy->isPointerTy() &&
+          argTy->getPointerElementType()->isFunctionTy() &&
+          !isa<Function>(arg) && !isa<Constant>(arg)) {
+        errs() << "Need auth\n";
+        auto paced = createPACIntrinsic(F, I, arg, Intrinsic::pa_autia);
+        CI->setArgOperand(i, paced);
       }
     }
     errs() << "===================\n";
