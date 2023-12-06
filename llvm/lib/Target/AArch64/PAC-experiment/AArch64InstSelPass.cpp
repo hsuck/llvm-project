@@ -26,35 +26,35 @@ using namespace llvm;
 using namespace llvm::PAC;
 
 namespace {
-	class AArch64InstSelPass : public MachineFunctionPass {
-		public:
-			static char ID;
+class AArch64InstSelPass : public MachineFunctionPass {
+public:
+  static char ID;
 
-			AArch64InstSelPass() : MachineFunctionPass(ID) {}
-			StringRef getPassName() const override { return DEBUG_TYPE; }
-			virtual bool doInitialization(Module &M) override;
-			bool runOnMachineFunction(MachineFunction &) override;
+  AArch64InstSelPass() : MachineFunctionPass(ID) {}
+  StringRef getPassName() const override { return DEBUG_TYPE; }
+  virtual bool doInitialization(Module &M) override;
+  bool runOnMachineFunction(MachineFunction &) override;
 
-		private:
-			const AArch64Subtarget *STI = nullptr;
-			const AArch64InstrInfo *TII = nullptr;
+private:
+  const AArch64Subtarget *STI = nullptr;
+  const AArch64InstrInfo *TII = nullptr;
 
-			inline bool handleInsn(MachineFunction &MF, MachineBasicBlock &MBB,
-					MachineBasicBlock::instr_iterator &MIi);
-			inline MachineInstr *findIndirectCallMI(MachineInstr *MI);
-			void triggerCompilationErrorOrphanAUTCALL(MachineBasicBlock &MBB);
-			inline bool isIndirectCall(const MachineInstr &MI) const;
-			inline const MCInstrDesc &getIndirectAutCall(MachineInstr *MI_indcall);
-			inline void replaceBranchByAutBranch(MachineBasicBlock &MBB,
-					MachineInstr *MI_indcall,
-					MachineInstr &MI);
-			inline void insertCOPYInsn(MachineBasicBlock &MBB, MachineInstr *MI_indcall,
-					MachineInstr &MI);
-	};
+  inline bool handleInsn(MachineFunction &MF, MachineBasicBlock &MBB,
+                         MachineBasicBlock::instr_iterator &MIi);
+  inline MachineInstr *findIndirectCallMI(MachineInstr *MI);
+  void triggerCompilationErrorOrphanAUTCALL(MachineBasicBlock &MBB);
+  inline bool isIndirectCall(const MachineInstr &MI) const;
+  inline const MCInstrDesc &getIndirectAutCall(MachineInstr *MI_indcall);
+  inline void replaceBranchByAutBranch(MachineBasicBlock &MBB,
+                                       MachineInstr *MI_indcall,
+                                       MachineInstr &MI);
+  inline void insertCOPYInsn(MachineBasicBlock &MBB, MachineInstr *MI_indcall,
+                             MachineInstr &MI);
+};
 } // namespace
 
 FunctionPass *llvm::createAArch64InstSelPass() {
-	return new AArch64InstSelPass();
+  return new AArch64InstSelPass();
 }
 
 char AArch64InstSelPass::ID = 0;
@@ -62,114 +62,115 @@ char AArch64InstSelPass::ID = 0;
 bool AArch64InstSelPass::doInitialization(Module &M) { return true; }
 
 bool AArch64InstSelPass::runOnMachineFunction(MachineFunction &MF) {
-	bool found = false;
+  bool found = false;
 
-	STI = &MF.getSubtarget<AArch64Subtarget>();
-	TII = STI->getInstrInfo();
+  STI = &MF.getSubtarget<AArch64Subtarget>();
+  TII = STI->getInstrInfo();
 
-	for (auto &MBB : MF)
-		for (auto MIi = MBB.instr_begin(), MIie = MBB.instr_end(); MIi != MIie;
-				++MIi)
-			found |= handleInsn(MF, MBB, MIi);
+  for (auto &MBB : MF)
+    for (auto MIi = MBB.instr_begin(), MIie = MBB.instr_end(); MIi != MIie;
+         ++MIi)
+      found |= handleInsn(MF, MBB, MIi);
 
-	return found;
+  return found;
 }
 
 inline bool
 AArch64InstSelPass::handleInsn(MachineFunction &MF, MachineBasicBlock &MBB,
-		MachineBasicBlock::instr_iterator &MIi) {
-	const auto MIOpcode = MIi->getOpcode();
+                               MachineBasicBlock::instr_iterator &MIi) {
+  const auto MIOpcode = MIi->getOpcode();
 
-	if (MIOpcode != AArch64::PA_AUTCALL)
-		return false;
+  if (MIOpcode != AArch64::PA_AUTCALL)
+    return false;
 
-	errs() << getPassName() << ": " << *MIi << '\n';
+  errs() << getPassName() << ": " << *MIi << '\n';
 
-	MachineInstr *MI_indcall = findIndirectCallMI(MIi->getNextNode());
-	errs() << getPassName() << ": " << *MI_indcall << '\n';
-	if (MI_indcall == nullptr)
-		triggerCompilationErrorOrphanAUTCALL(MBB);
+  MachineInstr *MI_indcall = findIndirectCallMI(MIi->getNextNode());
+  errs() << getPassName() << ": " << *MI_indcall << '\n';
+  if (MI_indcall == nullptr)
+    triggerCompilationErrorOrphanAUTCALL(MBB);
 
-	auto &MI = *MIi--;
-	replaceBranchByAutBranch(MBB, MI_indcall, MI);
+  auto &MI = *MIi--;
+  replaceBranchByAutBranch(MBB, MI_indcall, MI);
 
-	return true;
+  return true;
 }
 
 inline const MCInstrDesc &
 AArch64InstSelPass::getIndirectAutCall(MachineInstr *MI_indcall) {
 
-	if (MI_indcall->getOpcode() == AArch64::BLR)
-		errs() << getPassName() << ": "
-			<< "Find BLR\n";
-	return TII->get(AArch64::BLRAA);
+  if (MI_indcall->getOpcode() == AArch64::BLR) {
+    errs() << getPassName() << ": "
+           << "Find BLR\n";
+    return TII->get(AArch64::BLRAA);
+  }
 
-	// This is a tail call return, and we need to use BRAA
-	// (tail-call: ~optimizatoin where a tail-cal is converted to a direct call so
-	// that the tail-called function can return immediately to the current callee,
-	// without going through the currently active function.)
+  // This is a tail call return, and we need to use BRAA
+  // (tail-call: ~optimizatoin where a tail-cal is converted to a direct call so
+  // that the tail-called function can return immediately to the current callee,
+  // without going through the currently active function.)
 
-	errs() << getPassName() << ": "
-		<< "Find BR\n";
-	return TII->get(AArch64::TCRETURNriAA);
+  errs() << getPassName() << ": "
+         << "Find BR\n";
+  return TII->get(AArch64::TCRETURNriAA);
 }
 
 inline MachineInstr *AArch64InstSelPass::findIndirectCallMI(MachineInstr *MI) {
-	while (MI != nullptr && !isIndirectCall(*MI))
-		MI = MI->getNextNode();
+  while (MI != nullptr && !isIndirectCall(*MI))
+    MI = MI->getNextNode();
 
-	return MI;
+  return MI;
 }
 
 inline bool AArch64InstSelPass::isIndirectCall(const MachineInstr &MI) const {
-	switch (MI.getOpcode()) {
-		case AArch64::BLR:        // Normal indirect call
-		case AArch64::TCRETURNri: // Indirect tail call, br
-			return true;
-	}
-	return false;
+  switch (MI.getOpcode()) {
+  case AArch64::BLR:        // Normal indirect call
+  case AArch64::TCRETURNri: // Indirect tail call, br
+    return true;
+  }
+  return false;
 }
 
 void AArch64InstSelPass::triggerCompilationErrorOrphanAUTCALL(
-		MachineBasicBlock &MBB) {
-	LLVM_DEBUG(MBB.dump());
-	llvm_unreachable("failed to find BLR for AUTCALL");
+    MachineBasicBlock &MBB) {
+  LLVM_DEBUG(MBB.dump());
+  llvm_unreachable("failed to find BLR for AUTCALL");
 }
 
 inline void AArch64InstSelPass::replaceBranchByAutBranch(
-		MachineBasicBlock &MBB, MachineInstr *MI_indcall, MachineInstr &MI) {
-	auto mod = MI.getOperand(2);
+    MachineBasicBlock &MBB, MachineInstr *MI_indcall, MachineInstr &MI) {
+  auto mod = MI.getOperand(2);
 
-	insertCOPYInsn(MBB, MI_indcall, MI);
+  insertCOPYInsn(MBB, MI_indcall, MI);
 
-	auto BMI = BuildMI(MBB, *MI_indcall, MI_indcall->getDebugLoc(),
-			getIndirectAutCall(MI_indcall));
+  auto BMI = BuildMI(MBB, *MI_indcall, MI_indcall->getDebugLoc(),
+                     getIndirectAutCall(MI_indcall));
 
-	BMI.addUse(MI_indcall->getOperand(0).getReg());
+  BMI.addUse(MI_indcall->getOperand(0).getReg());
 
-	// Pseudo<(outs), (ins tcGPR64:$dst, i32imm:$FPDiff), []>
-	if (MI_indcall->getOpcode() == AArch64::TCRETURNri)
-		// Copy FPDiff from original tail call pseudo instruction
-		BMI.add(MI_indcall->getOperand(1));
+  // Pseudo<(outs), (ins tcGPR64:$dst, i32imm:$FPDiff), []>
+  if (MI_indcall->getOpcode() == AArch64::TCRETURNri)
+    // Copy FPDiff from original tail call pseudo instruction
+    BMI.add(MI_indcall->getOperand(1));
 
-	BMI.add(mod);
-	// Copy arguments
-	BMI.copyImplicitOps(*MI_indcall);
+  BMI.add(mod);
+  // Copy arguments
+  BMI.copyImplicitOps(*MI_indcall);
 
-	// remove original call pseudo instruction
-	MI_indcall->removeFromParent();
-	// remove autcall intrinsic
-	MI.removeFromParent();
+  // remove original call pseudo instruction
+  MI_indcall->removeFromParent();
+  // remove autcall intrinsic
+  MI.removeFromParent();
 }
 
 inline void AArch64InstSelPass::insertCOPYInsn(MachineBasicBlock &MBB,
-		MachineInstr *MI_indcall,
-		MachineInstr &MI) {
-	auto dst = MI.getOperand(0);
-	auto src = MI.getOperand(1);
+                                               MachineInstr *MI_indcall,
+                                               MachineInstr &MI) {
+  auto dst = MI.getOperand(0);
+  auto src = MI.getOperand(1);
 
-	auto COPYMI = BuildMI(MBB, *MI_indcall, MI_indcall->getDebugLoc(),
-			TII->get(AArch64::COPY));
-	COPYMI.add(dst);
-	COPYMI.add(src);
+  auto COPYMI = BuildMI(MBB, *MI_indcall, MI_indcall->getDebugLoc(),
+                        TII->get(AArch64::COPY));
+  COPYMI.add(dst);
+  COPYMI.add(src);
 }
