@@ -111,8 +111,6 @@ bool OptCpiPass::handleSelectInsn(Function &F, Instruction &I) {
 
 bool OptCpiPass::handleCallInsn(Function &F, Instruction &I) {
   auto CI = dyn_cast<CallInst>(&I);
-  /* auto ACS = dyn_cast<AbstractCallSite>(&I); */
-  auto calledFunc = CI->getCalledFunction();
 
   // handle indirect call
   if (CI->isIndirectCall()) {
@@ -121,61 +119,20 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I) {
     CI->setCalledOperand(paced);
   }
 
-  // handle externel function call
-  if (calledFunc != nullptr && calledFunc->isDeclaration() && !calledFunc->hasFnAttribute("pac-experiment")) {
-    // authenticate args which are code pointers
-    errs() << "External function arguments:\n";
-    for (unsigned int i = 0; i < CI->arg_size(); ++i) {
-      auto arg = CI->getArgOperand(i);
-      const auto argTy = arg->getType();
-      const bool enableOpaquePtr =
-          argTy->isPointerTy() ? dyn_cast<PointerType>(argTy)->isOpaque()
-                               : false;
-      errs() << *arg << '\n';
-      errs() << "Type: " << *argTy << '\n';
+  // sign args which are code pointers
+  errs() << "Function arguments:\n";
+  for (unsigned int i = 0; i < CI->arg_size(); ++i) {
+    auto arg = CI->getArgOperand(i);
+    const auto argTy = arg->getType();
 
-      if (enableOpaquePtr) {
-        if (argTy->isPointerTy() && !isa<Function>(arg) &&
-            !isa<Constant>(arg)) {
-          auto loadedArg = dyn_cast<LoadInst>(arg);
-          if (loadedArg != nullptr) {
-            errs() << "arg is a load insn\n";
-            auto pointee = loadedArg->getPointerOperand();
-            errs() << *pointee << "\n";
-            errs() << pointee->getType()->getTypeID() << "\n";
-            if (pointee->getType()->isFunctionTy()) {
-              errs() << "Need auth\n";
-            }
-          }
-        }
-      } else {
-        if (argTy->isPointerTy() &&
-            argTy->getPointerElementType()->isFunctionTy() &&
-            !isa<Function>(arg) && !isa<Constant>(arg)) {
-          errs() << "Need auth\n";
-          auto paced = createPACIntrinsic(F, I, arg, Intrinsic::pa_autia);
-          CI->setArgOperand(i, paced);
-        }
-      }
-    }
-    errs() << "===================\n";
-  } else {
-    // sign args which are code pointers
-    errs() << "Internal Function arguments:\n";
-    for (unsigned int i = 0; i < CI->arg_size(); ++i) {
-      auto arg = CI->getArgOperand(i);
-      const auto argTy = arg->getType();
-      errs() << *arg << '\n';
-      errs() << "Type: " << *argTy << '\n';
+    errs() << *arg << '\n';
+    errs() << "Type: " << *argTy << '\n';
 
-      if (argTy->isPointerTy() && isa<Function>(arg)) {
-        errs() << "Need sign\n";
-        auto paced = genPACedValue(F, I, arg);
-        CI->setArgOperand(i, paced);
-      }
-    }
-    errs() << "===================\n";
+    auto paced = genPACedValue(F, I, arg);
+    if (paced != nullptr)
+      CI->setArgOperand(i, paced);
   }
+  errs() << "===================\n";
 
   return true;
 }
