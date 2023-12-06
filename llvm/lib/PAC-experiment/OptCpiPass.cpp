@@ -150,11 +150,9 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I) {
       errs() << *arg << '\n';
       errs() << "Type: " << *argTy << '\n';
 
-      if (argTy->isPointerTy() && isa<Function>(arg)) {
-        errs() << "Need sign\n";
-        auto paced = genPACedValue(F, I, arg);
+      auto paced = genPACedValue(F, I, arg);
+      if (paced != nullptr)
         CI->setArgOperand(i, paced);
-      }
     }
     errs() << "===================\n";
   }
