@@ -11,6 +11,7 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
@@ -62,6 +63,7 @@ char AArch64InstSelPass::ID = 0;
 bool AArch64InstSelPass::doInitialization(Module &M) { return true; }
 
 bool AArch64InstSelPass::runOnMachineFunction(MachineFunction &MF) {
+  errs() << getPassName() << ": " << MF.getName() << "\n";
   bool found = false;
 
   STI = &MF.getSubtarget<AArch64Subtarget>();

@@ -59,6 +59,7 @@ char AArch64CpiPass::ID = 0;
 bool AArch64CpiPass::doInitialization(Module &M) { return true; }
 
 bool AArch64CpiPass::runOnMachineFunction(MachineFunction &MF) {
+  errs() << getPassName() << ": " << MF.getName() << "\n";
 	bool found = false;
 
 	TII = MF.getSubtarget<AArch64Subtarget>().getInstrInfo();
@@ -75,11 +76,11 @@ bool AArch64CpiPass::runOnMachineFunction(MachineFunction &MF) {
 inline bool AArch64CpiPass::handleInsn(MachineBasicBlock &MBB,
 		MachineBasicBlock::instr_iterator &MIi) {
 	const auto MIOpcode = MIi->getOpcode();
+	errs() << getPassName() << ": " << *MIi << '\n';
 
 	if (!isPAIntrinsic(MIOpcode))
 		return false;
 
-	errs() << getPassName() << ": " << *MIi << '\n';
 
 	auto &MI = *MIi--;
 

@@ -1,6 +1,7 @@
 // Author: hsuck
 
 #include "llvm/ADT/Statistic.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -59,16 +60,19 @@ bool OptSignGlobalsPass::runOnModule(Module &M) {
       const auto CV = Global->getInitializer();
       Type *CVTy = CV->getType();
 
-      errs() << "Value: " << *CV << "\n";
-      errs() << "Type: " << *CVTy << "\n";
-      errs() << "Global Type: " << *(Global->getType()) << "\n";
+      if (Global->getName().equals("llvm.global_ctors"))
+        continue;
 
       // TODO(hsuck): sign this global variable.
-      if (handle(M, &*Global, CV, CVTy))
+      if (handle(M, &*Global, CV, CVTy)) {
+        errs() << "Global name: " << Global->getName() << "\n";
+        errs() << "Value: " << *CV << "\n";
+        errs() << "Type: " << *CVTy << "\n";
+        errs() << "Global Type: " << *(Global->getType()) << "\n";
         if (Global->isConstant())
           Global->setConstant(false);
-
-      errs() << "===============\n";
+        errs() << "===============\n";
+      }
     }
   }
 
@@ -81,9 +85,17 @@ bool OptSignGlobalsPass::runOnModule(Module &M) {
 
 bool OptSignGlobalsPass::needPAC(Constant *CV, PointerType *CVTy) {
   /* errs() << __FUNCTION__ << '\n'; */
+  auto VTypeInput = isa<BitCastOperator>(CV)
+                        ? dyn_cast<BitCastOperator>(CV)->getSrcTy()
+                        : CV->getType();
+  auto VInput =
+      isa<BitCastOperator>(CV) ? dyn_cast<BitCastOperator>(CV)->getOperand(0) : CV;
+
+  errs() << "Value: " << *VInput << "\n";
+  errs() << "Type: " << *VTypeInput << "\n";
 
   // Is a function pointer, and initializer is not NULL
-  if (isa<Function>(CV) && !dyn_cast<Function>(CV)->isIntrinsic() &&
+  if (isa<Function>(VInput) && !dyn_cast<Function>(VInput)->isIntrinsic() &&
       !CV->isNullValue())
     return true;
 
@@ -103,26 +115,26 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV, Type *Ty) {
 }
 bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
                                 ArrayType *Ty) {
-  /* errs() << __FUNCTION__ << '\n'; */
+  errs() << __LINE__ << ": " << __FUNCTION__ << '\n';
 
   bool retVal = false;
   auto &C = M.getContext();
-  /* uint64_t baseAddr = 0; */
+  uint64_t baseAddr = 0;
 
-  /* if (isa<GetElementPtrInst>(V)) */
-  /*   baseAddr = dyn_cast<ConstantInt>(dyn_cast<User>(V)->getOperand(1)) */
-  /*                  ->getLimitedValue(); */
+  if (isa<GetElementPtrInst>(V))
+    baseAddr = dyn_cast<ConstantInt>(dyn_cast<User>(V)->getOperand(1))
+                   ->getLimitedValue();
 
   for (auto i = 0U; i < Ty->getNumElements(); ++i) {
     auto elementPtr = builder->CreateGEP(
         Ty, V,
         {
             ConstantInt::get(Type::getInt64Ty(C), 0),
-            /* ConstantInt::get(Type::getInt64Ty(C), baseAddr + i), */
-            ConstantInt::get(Type::getInt64Ty(C), i),
+            ConstantInt::get(Type::getInt64Ty(C), baseAddr + i),
+            /* ConstantInt::get(Type::getInt64Ty(C), i), */
         });
-    /* auto elementCV = CV->getAggregateElement(baseAddr + i); */
-    auto elementCV = CV->getAggregateElement(i);
+    auto elementCV = CV->getAggregateElement(baseAddr + i);
+    /* auto elementCV = CV->getAggregateElement(i); */
     auto elementTy = Ty->getElementType();
     retVal |= handle(M, elementPtr, elementCV, elementTy);
   }
@@ -131,7 +143,7 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
 }
 bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
                                 StructType *Ty) {
-  /* errs() << __FUNCTION__ << '\n'; */
+  errs() << __LINE__ << ": " << __FUNCTION__ << '\n';
 
   bool retVal = false;
 
@@ -146,7 +158,9 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
 }
 bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
                                 PointerType *Ty) {
-  /* errs() << __FUNCTION__ << '\n'; */
+  errs() << __LINE__ << ": " << __FUNCTION__ << '\n';
+  errs() << "Value: " << *CV << "\n";
+  errs() << "Type: " << *Ty << "\n";
 
   if (!needPAC(CV, Ty))
     return false;
