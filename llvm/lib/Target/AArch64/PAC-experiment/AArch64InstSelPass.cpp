@@ -63,7 +63,7 @@ char AArch64InstSelPass::ID = 0;
 bool AArch64InstSelPass::doInitialization(Module &M) { return true; }
 
 bool AArch64InstSelPass::runOnMachineFunction(MachineFunction &MF) {
-  errs() << getPassName() << ": " << MF.getName() << "\n";
+  /* errs() << getPassName() << ": " << MF.getName() << "\n"; */
   bool found = false;
 
   STI = &MF.getSubtarget<AArch64Subtarget>();
@@ -85,7 +85,7 @@ AArch64InstSelPass::handleInsn(MachineFunction &MF, MachineBasicBlock &MBB,
   if (MIOpcode != AArch64::PA_AUTCALL)
     return false;
 
-  errs() << getPassName() << ": " << *MIi << '\n';
+  /* errs() << getPassName() << ": " << *MIi << '\n'; */
 
   MachineInstr *MI_indcall = findIndirectCallMI(MIi->getNextNode());
   errs() << getPassName() << ": " << *MI_indcall << '\n';

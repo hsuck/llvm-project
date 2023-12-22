@@ -173,7 +173,7 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
   else
     loaded = builder->CreateLoad(Ty, V);
 
-  auto paced = createPACIntrinsic(builder, M, loaded);
+  auto paced = createPACIntrinsic(builder, M, loaded, Intrinsic::pa_pacia);
   builder->CreateStore(paced, V);
 
   return true;

@@ -13,7 +13,8 @@ namespace PAC {
 namespace OptUtil {
 CallInst *createPACIntrinsic(Function &F, Instruction &I, Value *calledValue,
                              Intrinsic::ID intrinsicID);
-Value *createPACIntrinsic(IRBuilder<> *builder, Module &M, Value *V);
+Value *createPACIntrinsic(IRBuilder<> *builder, Module &M, Value *V,
+                          Intrinsic::ID intrinsicID);
 } // namespace OptUtil
 } // namespace PAC
 } // namespace llvm

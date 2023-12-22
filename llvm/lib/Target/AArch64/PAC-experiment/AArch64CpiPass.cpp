@@ -27,28 +27,28 @@ using namespace llvm;
 using namespace llvm::PAC;
 
 namespace {
-	class AArch64CpiPass : public MachineFunctionPass {
-		public:
-			static char ID;
+class AArch64CpiPass : public MachineFunctionPass {
+public:
+  static char ID;
 
-			AArch64CpiPass() : MachineFunctionPass(ID) {}
-			StringRef getPassName() const override { return DEBUG_TYPE; }
-			bool doInitialization(Module &M) override;
-			bool runOnMachineFunction(MachineFunction &) override;
+  AArch64CpiPass() : MachineFunctionPass(ID) {}
+  StringRef getPassName() const override { return DEBUG_TYPE; }
+  bool doInitialization(Module &M) override;
+  bool runOnMachineFunction(MachineFunction &) override;
 
-		private:
-			const AArch64InstrInfo *TII = nullptr;
+private:
+  const AArch64InstrInfo *TII = nullptr;
 
-			void lowerPAAUTCALL(MachineBasicBlock &MBB, MachineInstr &MI);
-			void lowerPAPACIA(MachineBasicBlock &MBB, MachineInstr &MI);
+  void lowerPAAUTCALL(MachineBasicBlock &MBB, MachineInstr &MI);
+  void lowerPAPACIA(MachineBasicBlock &MBB, MachineInstr &MI);
 
-			inline bool handleInsn(MachineBasicBlock &MBB,
-					MachineBasicBlock::instr_iterator &MIi);
-			inline void lowerPAAUTIA(MachineBasicBlock &MBB, MachineInstr &MI);
-			void lowerPAIntrinsicCommon(MachineBasicBlock &MBB, MachineInstr &MI,
-					const MCInstrDesc &InstrDesc);
-			inline bool isPAIntrinsic(unsigned Opcode);
-	}; // AArch64CpiPass
+  inline bool handleInsn(MachineBasicBlock &MBB,
+                         MachineBasicBlock::instr_iterator &MIi);
+  inline void lowerPAAUTIA(MachineBasicBlock &MBB, MachineInstr &MI);
+  void lowerPAIntrinsicCommon(MachineBasicBlock &MBB, MachineInstr &MI,
+                              const MCInstrDesc &InstrDesc);
+  inline bool isPAIntrinsic(unsigned Opcode);
+}; // AArch64CpiPass
 
 } // namespace
 
@@ -59,77 +59,76 @@ char AArch64CpiPass::ID = 0;
 bool AArch64CpiPass::doInitialization(Module &M) { return true; }
 
 bool AArch64CpiPass::runOnMachineFunction(MachineFunction &MF) {
-  errs() << getPassName() << ": " << MF.getName() << "\n";
-	bool found = false;
+  /* errs() << getPassName() << ": " << MF.getName() << "\n"; */
+  bool found = false;
 
-	TII = MF.getSubtarget<AArch64Subtarget>().getInstrInfo();
+  TII = MF.getSubtarget<AArch64Subtarget>().getInstrInfo();
 
-	for (auto &MBB : MF)
-		for (auto MIi = MBB.instr_begin(), MIie = MBB.instr_end(); MIi != MIie;
-				++MIi) {
-			found |= handleInsn(MBB, MIi);
-		}
+  for (auto &MBB : MF)
+    for (auto MIi = MBB.instr_begin(), MIie = MBB.instr_end(); MIi != MIie;
+         ++MIi) {
+      found |= handleInsn(MBB, MIi);
+    }
 
-	return found;
+  return found;
 }
 
 inline bool AArch64CpiPass::handleInsn(MachineBasicBlock &MBB,
-		MachineBasicBlock::instr_iterator &MIi) {
-	const auto MIOpcode = MIi->getOpcode();
-	errs() << getPassName() << ": " << *MIi << '\n';
+                                       MachineBasicBlock::instr_iterator &MIi) {
+  const auto MIOpcode = MIi->getOpcode();
+  /* errs() << getPassName() << ": " << *MIi << '\n'; */
 
-	if (!isPAIntrinsic(MIOpcode))
-		return false;
+  if (!isPAIntrinsic(MIOpcode))
+    return false;
 
+  auto &MI = *MIi--;
 
-	auto &MI = *MIi--;
+  switch (MIOpcode) {
+  default:
+    llvm_unreachable("Unhandled PA intrinsic!!");
+  case AArch64::PA_PACIA:
+    lowerPAPACIA(MBB, MI);
+    break;
+  case AArch64::PA_AUTIA:
+    lowerPAAUTIA(MBB, MI);
+    break;
+  case AArch64::PA_AUTCALL:
+    /* lowerPAAUTCALL(MBB, MI); */
+    break;
+  }
 
-	switch (MIOpcode) {
-		default:
-			llvm_unreachable("Unhandled PA intrinsic!!");
-		case AArch64::PA_PACIA:
-			lowerPAPACIA(MBB, MI);
-			break;
-		case AArch64::PA_AUTIA:
-			lowerPAAUTIA(MBB, MI);
-			break;
-		case AArch64::PA_AUTCALL:
-			/* lowerPAAUTCALL(MBB, MI); */
-			break;
-	}
+  MI.removeFromParent(); // Remove the PA intrinsic!
 
-	MI.removeFromParent(); // Remove the PA intrinsic!
-
-	return true;
+  return true;
 }
 
 inline bool AArch64CpiPass::isPAIntrinsic(unsigned Opcode) {
-	switch (Opcode) {
-		case AArch64::PA_PACIA:
-		case AArch64::PA_AUTIA:
-		case AArch64::PA_AUTCALL:
-			return true;
-	}
+  switch (Opcode) {
+  case AArch64::PA_PACIA:
+  case AArch64::PA_AUTIA:
+  case AArch64::PA_AUTCALL:
+    return true;
+  }
 
-	return false;
+  return false;
 }
 
 void AArch64CpiPass::lowerPAPACIA(MachineBasicBlock &MBB, MachineInstr &MI) {
-	lowerPAIntrinsicCommon(MBB, MI, TII->get(AArch64::PACIA));
+  lowerPAIntrinsicCommon(MBB, MI, TII->get(AArch64::PACIA));
 }
 
 void AArch64CpiPass::lowerPAAUTIA(MachineBasicBlock &MBB, MachineInstr &MI) {
-	lowerPAIntrinsicCommon(MBB, MI, TII->get(AArch64::AUTIA));
+  lowerPAIntrinsicCommon(MBB, MI, TII->get(AArch64::AUTIA));
 }
 
 void AArch64CpiPass::lowerPAIntrinsicCommon(MachineBasicBlock &MBB,
-		MachineInstr &MI,
-		const MCInstrDesc &InstrDesc) {
-	auto &mod = MI.getOperand(2);
-	auto &src = MI.getOperand(1);
-	auto &dst = MI.getOperand(0);
-	auto BMI = BuildMI(MBB, MI, MI.getDebugLoc(), InstrDesc);
-	BMI.add(dst);
-	BMI.add(src);
-	BMI.add(mod);
+                                            MachineInstr &MI,
+                                            const MCInstrDesc &InstrDesc) {
+  auto &mod = MI.getOperand(2);
+  auto &src = MI.getOperand(1);
+  auto &dst = MI.getOperand(0);
+  auto BMI = BuildMI(MBB, MI, MI.getDebugLoc(), InstrDesc);
+  BMI.add(dst);
+  BMI.add(src);
+  BMI.add(mod);
 }
