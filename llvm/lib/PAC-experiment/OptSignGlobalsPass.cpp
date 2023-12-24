@@ -41,7 +41,7 @@ static RegisterPass<OptSignGlobalsPass> X("opt-globals-pass",
 Pass *llvm::PAC::createOptSignGlobalsPass() { return new OptSignGlobalsPass(); }
 
 bool OptSignGlobalsPass::runOnModule(Module &M) {
-  errs() << getPassName() << "\n";
+  /* errs() << getPassName() << "\n"; */
 
   auto &C = M.getContext();
   auto voidTy = Type::getVoidTy(C);
@@ -65,13 +65,13 @@ bool OptSignGlobalsPass::runOnModule(Module &M) {
 
       // TODO(hsuck): sign this global variable.
       if (handle(M, &*Global, CV, CVTy)) {
-        errs() << "Global name: " << Global->getName() << "\n";
-        errs() << "Value: " << *CV << "\n";
-        errs() << "Type: " << *CVTy << "\n";
-        errs() << "Global Type: " << *(Global->getType()) << "\n";
+        /* errs() << "Global name: " << Global->getName() << "\n"; */
+        /* errs() << "Value: " << *CV << "\n"; */
+        /* errs() << "Type: " << *CVTy << "\n"; */
+        /* errs() << "Global Type: " << *(Global->getType()) << "\n"; */
         if (Global->isConstant())
           Global->setConstant(false);
-        errs() << "===============\n";
+        /* errs() << "===============\n"; */
       }
     }
   }
@@ -91,8 +91,8 @@ bool OptSignGlobalsPass::needPAC(Constant *CV, PointerType *CVTy) {
   auto VInput =
       isa<BitCastOperator>(CV) ? dyn_cast<BitCastOperator>(CV)->getOperand(0) : CV;
 
-  errs() << "Value: " << *VInput << "\n";
-  errs() << "Type: " << *VTypeInput << "\n";
+  /* errs() << "Value: " << *VInput << "\n"; */
+  /* errs() << "Type: " << *VTypeInput << "\n"; */
 
   // Is a function pointer, and initializer is not NULL
   if (isa<Function>(VInput) && !dyn_cast<Function>(VInput)->isIntrinsic() &&
@@ -115,7 +115,7 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV, Type *Ty) {
 }
 bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
                                 ArrayType *Ty) {
-  errs() << __LINE__ << ": " << __FUNCTION__ << '\n';
+  /* errs() << __LINE__ << ": " << __FUNCTION__ << '\n'; */
 
   bool retVal = false;
   auto &C = M.getContext();
@@ -143,7 +143,7 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
 }
 bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
                                 StructType *Ty) {
-  errs() << __LINE__ << ": " << __FUNCTION__ << '\n';
+  /* errs() << __LINE__ << ": " << __FUNCTION__ << '\n'; */
 
   bool retVal = false;
 
@@ -158,14 +158,14 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
 }
 bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
                                 PointerType *Ty) {
-  errs() << __LINE__ << ": " << __FUNCTION__ << '\n';
-  errs() << "Value: " << *CV << "\n";
-  errs() << "Type: " << *Ty << "\n";
+  /* errs() << __LINE__ << ": " << __FUNCTION__ << '\n'; */
+  /* errs() << "Value: " << *CV << "\n"; */
+  /* errs() << "Type: " << *Ty << "\n"; */
 
   if (!needPAC(CV, Ty))
     return false;
 
-  errs() << "Need sign\n";
+  /* errs() << "Need sign\n"; */
 
   LoadInst *loaded = nullptr;
   if (Ty->isOpaque())

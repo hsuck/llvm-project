@@ -112,7 +112,6 @@ bool OptCpiPass::handleStoreInsn(Function &F, Instruction &I) {
     return false;
 
   SI->setOperand(0, paced);
-  /* errs() << getPassName() << ": " << I << '\n'; */
 
   return true;
 }
@@ -145,6 +144,7 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
     CI->setCalledOperand(paced);
   }
 
+
   // handle externel function call
   if (calledFunc != nullptr) {
     if (TLI)
@@ -170,29 +170,29 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
       IRBuilder<> Builder(&I);
       IRBuilder<> BuilderAfter(I.getNextNode());
 
-      errs() << "Value: " << *arg << '\n';
-      errs() << "Type: " << *argTy << "\n\n";
+      /* errs() << "Value: " << *arg << '\n'; */
+      /* errs() << "Type: " << *argTy << "\n\n"; */
       assert(argTy != nullptr);
 
       for (auto i = 0U; i < argTy->getNumElements(); ++i) {
-        errs() << i << "th element\n";
+        /* errs() << i << "th element\n"; */
 
         auto elementPtr = Builder.CreateStructGEP(argTy, arg, i);
         auto elementPtrAfter = BuilderAfter.CreateStructGEP(argTy, arg, i);
-        errs() << "GEP: " << *elementPtr << '\n';
-        errs() << "GEP Type: " << *(elementPtr->getType()) << "\n\n";
+        /* errs() << "GEP: " << *elementPtr << '\n'; */
+        /* errs() << "GEP Type: " << *(elementPtr->getType()) << "\n\n"; */
 
         auto elementTy = argTy->getElementType(i);
-        errs() << "Element Type: " << *elementTy << '\n';
-        errs() << "isPointerTy: " << elementTy->isPointerTy() << '\n';
-        errs() << "isFunctionTy: " << elementTy->isFunctionTy() << '\n';
-        errs() << "isStructTy: " << elementTy->isStructTy() << "\n\n";
+        /* errs() << "Element Type: " << *elementTy << '\n'; */
+        /* errs() << "isPointerTy: " << elementTy->isPointerTy() << '\n'; */
+        /* errs() << "isFunctionTy: " << elementTy->isFunctionTy() << '\n'; */
+        /* errs() << "isStructTy: " << elementTy->isStructTy() << "\n\n"; */
 
         if (elementTy->isPointerTy() &&
             elementTy->getPointerElementType()->isFunctionTy()) {
-          errs() << "Instrumentations before call: \n";
+          /* errs() << "Instrumentations before call: \n"; */
           LoadInst *loaded = Builder.CreateLoad(elementTy, elementPtr);
-          errs() << *loaded << '\n';
+          /* errs() << *loaded << '\n'; */
 
           // Insert PAC intrinsic
           auto paced = createPACIntrinsic(&Builder, *(F.getParent()), loaded,
@@ -200,9 +200,9 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
 
           Builder.CreateStore(paced, elementPtr);
 
-          errs() << "Instrumentations after call: \n";
+          /* errs() << "Instrumentations after call: \n"; */
           loaded = BuilderAfter.CreateLoad(elementTy, elementPtrAfter);
-          errs() << *loaded << '\n';
+          /* errs() << *loaded << '\n'; */
 
           paced = createPACIntrinsic(&BuilderAfter, *(F.getParent()), loaded,
                                      Intrinsic::pa_pacia);
@@ -210,16 +210,16 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
         } else if (elementTy->isStructTy()) {
           auto intraElementTy =
               dyn_cast<StructType>(elementTy)->getElementType(0);
-          errs() << "Intra Element Type: " << *intraElementTy << "\n";
+          /* errs() << "Intra Element Type: " << *intraElementTy << "\n"; */
 
           if (intraElementTy->isPointerTy() &&
               intraElementTy->getPointerElementType()->isFunctionTy()) {
-            errs() << "Instrumentations before call: \n";
+            /* errs() << "Instrumentations before call: \n"; */
             auto casted = Builder.CreateBitCast(elementPtr,
                                                 intraElementTy->getPointerTo());
-            errs() << *casted << '\n';
+            /* errs() << *casted << '\n'; */
             LoadInst *loaded = Builder.CreateLoad(intraElementTy, casted);
-            errs() << *loaded << '\n';
+            /* errs() << *loaded << '\n'; */
 
             // Insert PAC intrinsic
             auto paced = createPACIntrinsic(&Builder, *(F.getParent()), loaded,
@@ -227,19 +227,19 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
 
             Builder.CreateStore(paced, casted);
 
-            errs() << "Instrumentations after call: \n";
+            /* errs() << "Instrumentations after call: \n"; */
             casted = BuilderAfter.CreateBitCast(elementPtrAfter,
                                                 intraElementTy->getPointerTo());
-            errs() << *casted << '\n';
+            /* errs() << *casted << '\n'; */
             loaded = BuilderAfter.CreateLoad(intraElementTy, casted);
-            errs() << *loaded << '\n';
+            /* errs() << *loaded << '\n'; */
 
             paced = createPACIntrinsic(&BuilderAfter, *(F.getParent()), loaded,
                                        Intrinsic::pa_pacia);
             BuilderAfter.CreateStore(paced, casted);
           }
         }
-        errs() << "------------------------\n";
+        /* errs() << "------------------------\n"; */
       }
     } else {
       // sign args which are code pointers
@@ -249,6 +249,14 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
         if (paced != nullptr)
           CI->setArgOperand(i, paced);
       }
+    }
+  } else {
+      // sign args which are code pointers
+    for (unsigned int i = 0; i < CI->arg_size(); ++i) {
+      auto arg = CI->getArgOperand(i);
+      auto paced = genPACedValue(F, I, arg);
+      if (paced != nullptr)
+        CI->setArgOperand(i, paced);
     }
   }
 
@@ -275,7 +283,7 @@ CallInst *OptCpiPass::genPACedValue(Function &F, Instruction &I, Value *V) {
 
   // Create PA intrinsic (pacia)
   errs() << getPassName() << ": "
-         << "Create pacia intrinsic here\n"
-         << '\n';
+         << I
+         << "Create pacia intrinsic here\n";
   return createPACIntrinsic(F, I, V, Intrinsic::pa_pacia);
 }

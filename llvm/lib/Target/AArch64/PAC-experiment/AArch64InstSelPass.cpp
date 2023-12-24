@@ -88,7 +88,7 @@ AArch64InstSelPass::handleInsn(MachineFunction &MF, MachineBasicBlock &MBB,
   /* errs() << getPassName() << ": " << *MIi << '\n'; */
 
   MachineInstr *MI_indcall = findIndirectCallMI(MIi->getNextNode());
-  errs() << getPassName() << ": " << *MI_indcall << '\n';
+  /* errs() << getPassName() << ": " << *MI_indcall << '\n'; */
   if (MI_indcall == nullptr)
     triggerCompilationErrorOrphanAUTCALL(MBB);
 
@@ -102,8 +102,8 @@ inline const MCInstrDesc &
 AArch64InstSelPass::getIndirectAutCall(MachineInstr *MI_indcall) {
 
   if (MI_indcall->getOpcode() == AArch64::BLR) {
-    errs() << getPassName() << ": "
-           << "Find BLR\n";
+    /* errs() << getPassName() << ": " */
+    /*        << "Find BLR\n"; */
     return TII->get(AArch64::BLRAA);
   }
 
@@ -112,8 +112,8 @@ AArch64InstSelPass::getIndirectAutCall(MachineInstr *MI_indcall) {
   // that the tail-called function can return immediately to the current callee,
   // without going through the currently active function.)
 
-  errs() << getPassName() << ": "
-         << "Find BR\n";
+  /* errs() << getPassName() << ": " */
+  /*        << "Find BR\n"; */
   return TII->get(AArch64::TCRETURNriAA);
 }
 
