@@ -1,5 +1,5 @@
 /**
- * \file mbedtls/build_info.h
+ * \file build_info.h
  *
  * \brief Build-time configuration info
  *
@@ -95,7 +95,7 @@
 
 /* X.509, TLS and non-PSA crypto configuration */
 #if !defined(MBEDTLS_CONFIG_FILE)
-#include "mbedtls/mbedtls_config.h"
+#include "mbedtls_config.h"
 #else
 #include MBEDTLS_CONFIG_FILE
 #endif
@@ -151,17 +151,17 @@
  */
 #if defined(MBEDTLS_PSA_CRYPTO_CONFIG) /* PSA_WANT_xxx influences MBEDTLS_xxx */ || \
     defined(MBEDTLS_PSA_CRYPTO_C) /* MBEDTLS_xxx influences PSA_WANT_xxx */
-#include "mbedtls/config_psa.h"
+#include "config_psa.h"
 #endif
 
-#include "mbedtls/config_adjust_legacy_crypto.h"
+#include "config_adjust_legacy_crypto.h"
 
-#include "mbedtls/config_adjust_x509.h"
+#include "config_adjust_x509.h"
 
-#include "mbedtls/config_adjust_ssl.h"
+#include "config_adjust_ssl.h"
 
 /* Make sure all configuration symbols are set before including check_config.h,
  * even the ones that are calculated programmatically. */
-#include "mbedtls/check_config.h"
+#include "check_config.h"
 
 #endif /* MBEDTLS_BUILD_INFO_H */

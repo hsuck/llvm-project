@@ -12,8 +12,8 @@ namespace llvm {
 namespace PAC {
 namespace OptUtil {
 CallInst *createPACIntrinsic(Function &F, Instruction &I, Value *calledValue,
-                             Intrinsic::ID intrinsicID);
-Value *createPACIntrinsic(IRBuilder<> *builder, Module &M, Value *V,
+                             Type *calledValueType, Intrinsic::ID intrinsicID);
+Value *createPACIntrinsic(IRBuilder<> *builder, Module &M, Value *V, Type *T,
                           Intrinsic::ID intrinsicID);
 } // namespace OptUtil
 } // namespace PAC

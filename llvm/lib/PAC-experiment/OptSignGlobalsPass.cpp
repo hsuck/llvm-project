@@ -87,9 +87,10 @@ bool OptSignGlobalsPass::needPAC(Constant *CV, PointerType *CVTy) {
   /* errs() << __FUNCTION__ << '\n'; */
   auto VTypeInput = isa<BitCastOperator>(CV)
                         ? dyn_cast<BitCastOperator>(CV)->getSrcTy()
-                        : CV->getType();
-  auto VInput =
-      isa<BitCastOperator>(CV) ? dyn_cast<BitCastOperator>(CV)->getOperand(0) : CV;
+                        : CVTy;
+  auto VInput = isa<BitCastOperator>(CV)
+                    ? dyn_cast<BitCastOperator>(CV)->getOperand(0)
+                    : CV;
 
   /* errs() << "Value: " << *VInput << "\n"; */
   /* errs() << "Type: " << *VTypeInput << "\n"; */
@@ -149,6 +150,7 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
 
   for (auto i = 0U; i < Ty->getNumElements(); ++i) {
     auto elementPtr = builder->CreateStructGEP(Ty, V, i);
+    errs() << "GEP: " << *elementPtr << '\n';
     auto elementCV = CV->getAggregateElement(i);
     auto elementTy = Ty->getElementType(i);
     retVal |= handle(M, elementPtr, elementCV, elementTy);
@@ -159,22 +161,35 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
 bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
                                 PointerType *Ty) {
   /* errs() << __LINE__ << ": " << __FUNCTION__ << '\n'; */
-  /* errs() << "Value: " << *CV << "\n"; */
-  /* errs() << "Type: " << *Ty << "\n"; */
+  errs() << "Value: " << *CV << "\n";
+  errs() << "Type: " << *Ty << "\n";
 
   if (!needPAC(CV, Ty))
     return false;
 
   /* errs() << "Need sign\n"; */
+  auto VTypeInput =
+      isa<BitCastOperator>(CV) ? dyn_cast<BitCastOperator>(CV)->getSrcTy() : Ty;
+  auto VInput = isa<BitCastOperator>(CV)
+                    ? dyn_cast<BitCastOperator>(CV)->getOperand(0)
+                    : CV;
+
+  errs() << "Real value: " << *VTypeInput << "\n";
+  errs() << "Real Type: " << *VInput << "\n";
+
+  auto casted = isa<BitCastOperator>(CV)
+                    ? builder->CreateBitCast(V, VTypeInput->getPointerTo())
+                    : V;
 
   LoadInst *loaded = nullptr;
   if (Ty->isOpaque())
     loaded = builder->CreateLoad(V->getType(), V);
   else
-    loaded = builder->CreateLoad(Ty, V);
+    loaded = builder->CreateLoad(VTypeInput, casted);
 
-  auto paced = createPACIntrinsic(builder, M, loaded, Intrinsic::pa_pacia);
-  builder->CreateStore(paced, V);
+  auto paced = createPACIntrinsic(builder, M, loaded, loaded->getType(),
+                                  Intrinsic::pa_pacia);
+  builder->CreateStore(paced, casted);
 
   return true;
 }

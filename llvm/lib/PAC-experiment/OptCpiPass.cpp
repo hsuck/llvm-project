@@ -34,7 +34,8 @@ struct OptCpiPass : public FunctionPass {
   bool runOnFunction(Function &F) override;
 
 private:
-  CallInst *genPACedValue(Function &F, Instruction &I, Value *V);
+  CallInst *genPACedValue(Function &F, Instruction &I, Value *V,
+                          Intrinsic::ID intrinsicID);
   bool handleInsn(Function &F, Instruction &I, const TargetLibraryInfo *TLI);
   bool handleCallInsn(Function &F, Instruction &I,
                       const TargetLibraryInfo *TLI);
@@ -107,7 +108,7 @@ bool OptCpiPass::handleInsn(Function &F, Instruction &I,
 
 bool OptCpiPass::handleStoreInsn(Function &F, Instruction &I) {
   auto SI = dyn_cast<StoreInst>(&I);
-  auto paced = genPACedValue(F, I, SI->getValueOperand());
+  auto paced = genPACedValue(F, I, SI->getValueOperand(), Intrinsic::pa_pacia);
   if (paced == nullptr)
     return false;
 
@@ -120,7 +121,7 @@ bool OptCpiPass::handleSelectInsn(Function &F, Instruction &I) {
   auto retVal = false;
 
   for (unsigned int i = 0; i < I.getNumOperands(); ++i) {
-    auto paced = genPACedValue(F, I, I.getOperand(i));
+    auto paced = genPACedValue(F, I, I.getOperand(i), Intrinsic::pa_pacia);
     if (paced != nullptr) {
       retVal = true;
       I.setOperand(i, paced);
@@ -140,10 +141,14 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
   // handle indirect call
   if (CI->isIndirectCall()) {
     auto calledValue = CI->getCalledOperand();
-    auto paced = createPACIntrinsic(F, I, calledValue, Intrinsic::pa_autcall);
+    auto calledValueType =
+        isa<BitCastOperator>(calledValue)
+            ? dyn_cast<BitCastOperator>(calledValue)->getDestTy()
+            : calledValue->getType();
+    auto paced = createPACIntrinsic(F, I, calledValue, calledValueType,
+                                    Intrinsic::pa_autcall);
     CI->setCalledOperand(paced);
   }
-
 
   // handle externel function call
   if (calledFunc != nullptr) {
@@ -159,7 +164,15 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
         if (argTy->isPointerTy() &&
             argTy->getPointerElementType()->isFunctionTy() &&
             !isa<Function>(arg) && !isa<Constant>(arg)) {
-          auto paced = createPACIntrinsic(F, I, arg, Intrinsic::pa_autia);
+          auto VInput = isa<BitCastOperator>(arg)
+                            ? dyn_cast<BitCastOperator>(arg)->getOperand(0)
+                            : arg;
+          auto VTypeInput = isa<BitCastOperator>(arg)
+                                ? dyn_cast<BitCastOperator>(arg)->getSrcTy()
+                                : arg->getType();
+          auto paced =
+              createPACIntrinsic(F, I, VInput, VTypeInput, Intrinsic::pa_autia);
+          /* auto paced = genPACedValue(F, I, arg, Intrinsic::pa_autia); */
           CI->setArgOperand(i, paced);
         }
       }
@@ -195,8 +208,9 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
           /* errs() << *loaded << '\n'; */
 
           // Insert PAC intrinsic
-          auto paced = createPACIntrinsic(&Builder, *(F.getParent()), loaded,
-                                          Intrinsic::pa_autia);
+          auto paced =
+              createPACIntrinsic(&Builder, *(F.getParent()), loaded,
+                                 loaded->getType(), Intrinsic::pa_autia);
 
           Builder.CreateStore(paced, elementPtr);
 
@@ -205,7 +219,7 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
           /* errs() << *loaded << '\n'; */
 
           paced = createPACIntrinsic(&BuilderAfter, *(F.getParent()), loaded,
-                                     Intrinsic::pa_pacia);
+                                     loaded->getType(), Intrinsic::pa_pacia);
           BuilderAfter.CreateStore(paced, elementPtrAfter);
         } else if (elementTy->isStructTy()) {
           auto intraElementTy =
@@ -222,8 +236,9 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
             /* errs() << *loaded << '\n'; */
 
             // Insert PAC intrinsic
-            auto paced = createPACIntrinsic(&Builder, *(F.getParent()), loaded,
-                                            Intrinsic::pa_autia);
+            auto paced =
+                createPACIntrinsic(&Builder, *(F.getParent()), loaded,
+                                   loaded->getType(), Intrinsic::pa_autia);
 
             Builder.CreateStore(paced, casted);
 
@@ -235,7 +250,7 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
             /* errs() << *loaded << '\n'; */
 
             paced = createPACIntrinsic(&BuilderAfter, *(F.getParent()), loaded,
-                                       Intrinsic::pa_pacia);
+                                       loaded->getType(), Intrinsic::pa_pacia);
             BuilderAfter.CreateStore(paced, casted);
           }
         }
@@ -245,16 +260,16 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
       // sign args which are code pointers
       for (unsigned int i = 0; i < CI->arg_size(); ++i) {
         auto arg = CI->getArgOperand(i);
-        auto paced = genPACedValue(F, I, arg);
+        auto paced = genPACedValue(F, I, arg, Intrinsic::pa_pacia);
         if (paced != nullptr)
           CI->setArgOperand(i, paced);
       }
     }
   } else {
-      // sign args which are code pointers
+    // sign args which are code pointers
     for (unsigned int i = 0; i < CI->arg_size(); ++i) {
       auto arg = CI->getArgOperand(i);
-      auto paced = genPACedValue(F, I, arg);
+      auto paced = genPACedValue(F, I, arg, Intrinsic::pa_pacia);
       if (paced != nullptr)
         CI->setArgOperand(i, paced);
     }
@@ -263,7 +278,8 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
   return true;
 }
 
-CallInst *OptCpiPass::genPACedValue(Function &F, Instruction &I, Value *V) {
+CallInst *OptCpiPass::genPACedValue(Function &F, Instruction &I, Value *V,
+                                    Intrinsic::ID intrinsicID) {
   // We need to handle two types of function pointer arguments:
   // 1) a direct function
   // 2) a direct function passed via BitCastOperator
@@ -282,8 +298,7 @@ CallInst *OptCpiPass::genPACedValue(Function &F, Instruction &I, Value *V) {
   assert((isa<BitCastOperator>(V) || V->getType() == VTypeInput));
 
   // Create PA intrinsic (pacia)
-  errs() << getPassName() << ": "
-         << I
+  errs() << getPassName() << ": " << I << '\n'
          << "Create pacia intrinsic here\n";
-  return createPACIntrinsic(F, I, V, Intrinsic::pa_pacia);
+  return createPACIntrinsic(F, I, V, VTypeInput, intrinsicID);
 }

@@ -15,12 +15,14 @@ add_llvm_library( OptCpiPass
 	LLVMSupport
 	LLVMTransformUtils
 	LLVMCodeGen
+	sha3
 
 	LINK_LIBS
 	LLVMCore
 	LLVMSupport
 	LLVMTransformUtils
 	LLVMCodeGen
+	sha3
 	)
 
 set_property(TARGET OptCpiPass PROPERTY LLVM_SYSTEM_LIBS)
