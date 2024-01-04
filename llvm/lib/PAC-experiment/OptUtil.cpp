@@ -86,7 +86,7 @@ uint64_t getTypeIDFor(const Type *T) {
   std::string buf;
   raw_string_ostream typeStr(buf);
 
-  genTypeStr(T, typeStr, I);
+  genTypeStr(T, typeStr);
   typeStr.flush();
 
   outs() << "Type String: " << typeStr.str() << '\n';
