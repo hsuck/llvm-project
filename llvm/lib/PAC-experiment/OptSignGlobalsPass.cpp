@@ -41,8 +41,6 @@ static RegisterPass<OptSignGlobalsPass> X("opt-globals-pass",
 Pass *llvm::PAC::createOptSignGlobalsPass() { return new OptSignGlobalsPass(); }
 
 bool OptSignGlobalsPass::runOnModule(Module &M) {
-  /* errs() << getPassName() << "\n"; */
-
   auto &C = M.getContext();
   auto voidTy = Type::getVoidTy(C);
   FunctionType *prototype = FunctionType::get(voidTy, false);
@@ -65,13 +63,13 @@ bool OptSignGlobalsPass::runOnModule(Module &M) {
 
       // TODO(hsuck): sign this global variable.
       if (handle(M, &*Global, CV, CVTy)) {
-        /* errs() << "Global name: " << Global->getName() << "\n"; */
-        /* errs() << "Value: " << *CV << "\n"; */
-        /* errs() << "Type: " << *CVTy << "\n"; */
-        /* errs() << "Global Type: " << *(Global->getType()) << "\n"; */
+        outs() << getPassName() << ":\tGlobal name: " << Global->getName() << "\n";
+        /* outs() << "Value: " << *CV << "\n"; */
+        /* outs() << "Type: " << *CVTy << "\n"; */
+        outs() << getPassName() << ":\tGlobal Type: " << *(Global->getType()) << "\n";
         if (Global->isConstant())
           Global->setConstant(false);
-        /* errs() << "===============\n"; */
+        /* outs() << "===============\n"; */
       }
     }
   }
@@ -84,7 +82,7 @@ bool OptSignGlobalsPass::runOnModule(Module &M) {
 }
 
 bool OptSignGlobalsPass::needPAC(Constant *CV, PointerType *CVTy) {
-  /* errs() << __FUNCTION__ << '\n'; */
+  /* outs() << __FUNCTION__ << '\n'; */
   auto VTypeInput = isa<BitCastOperator>(CV)
                         ? dyn_cast<BitCastOperator>(CV)->getSrcTy()
                         : CVTy;
@@ -92,8 +90,8 @@ bool OptSignGlobalsPass::needPAC(Constant *CV, PointerType *CVTy) {
                     ? dyn_cast<BitCastOperator>(CV)->getOperand(0)
                     : CV;
 
-  /* errs() << "Value: " << *VInput << "\n"; */
-  /* errs() << "Type: " << *VTypeInput << "\n"; */
+  /* outs() << "Value: " << *VInput << "\n"; */
+  /* outs() << "Type: " << *VTypeInput << "\n"; */
 
   // Is a function pointer, and initializer is not NULL
   if (isa<Function>(VInput) && !dyn_cast<Function>(VInput)->isIntrinsic() &&
@@ -104,7 +102,7 @@ bool OptSignGlobalsPass::needPAC(Constant *CV, PointerType *CVTy) {
 }
 
 bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV, Type *Ty) {
-  /* errs() << __FUNCTION__ << '\n'; */
+  /* outs() << __FUNCTION__ << '\n'; */
   if (Ty->isArrayTy())
     return handle(M, V, CV, dyn_cast<ArrayType>(Ty));
   if (Ty->isStructTy())
@@ -116,7 +114,7 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV, Type *Ty) {
 }
 bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
                                 ArrayType *Ty) {
-  /* errs() << __LINE__ << ": " << __FUNCTION__ << '\n'; */
+  /* outs() << __LINE__ << ": " << __FUNCTION__ << '\n'; */
 
   bool retVal = false;
   auto &C = M.getContext();
@@ -144,13 +142,13 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
 }
 bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
                                 StructType *Ty) {
-  /* errs() << __LINE__ << ": " << __FUNCTION__ << '\n'; */
+  /* outs() << __LINE__ << ": " << __FUNCTION__ << '\n'; */
 
   bool retVal = false;
 
   for (auto i = 0U; i < Ty->getNumElements(); ++i) {
     auto elementPtr = builder->CreateStructGEP(Ty, V, i);
-    errs() << "GEP: " << *elementPtr << '\n';
+    /* outs() << "GEP: " << *elementPtr << '\n'; */
     auto elementCV = CV->getAggregateElement(i);
     auto elementTy = Ty->getElementType(i);
     retVal |= handle(M, elementPtr, elementCV, elementTy);
@@ -160,22 +158,25 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
 }
 bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
                                 PointerType *Ty) {
-  /* errs() << __LINE__ << ": " << __FUNCTION__ << '\n'; */
-  errs() << "Value: " << *CV << "\n";
-  errs() << "Type: " << *Ty << "\n";
+  /* outs() << __LINE__ << ": " << __FUNCTION__ << '\n'; */
+  outs() << getPassName() << ":\tValue: " << *CV << "\n";
+  outs() << getPassName() << ":\tType: " << *Ty << "\n";
 
   if (!needPAC(CV, Ty))
     return false;
 
-  /* errs() << "Need sign\n"; */
-  auto VTypeInput =
-      isa<BitCastOperator>(CV) ? dyn_cast<BitCastOperator>(CV)->getSrcTy() : Ty;
-  auto VInput = isa<BitCastOperator>(CV)
-                    ? dyn_cast<BitCastOperator>(CV)->getOperand(0)
-                    : CV;
+  auto VTypeInput = (isa<BitCastOperator>(CV) &&
+                    dyn_cast<BitCastOperator>(CV)->getDestTy()->getPointerElementType()->isIntegerTy())
+                  ? dyn_cast<BitCastOperator>(CV)->getSrcTy()
+                  : Ty;
+  auto VInput = (isa<BitCastOperator>(CV))
+              ? dyn_cast<BitCastOperator>(CV)->getOperand(0)
+              : CV;
 
-  errs() << "Real value: " << *VTypeInput << "\n";
-  errs() << "Real Type: " << *VInput << "\n";
+  assert((isa<BitCastOperator>(CV) || Ty == VTypeInput));
+
+  outs() << getPassName() << ":\tReal value: " << *VTypeInput << "\n";
+  outs() << getPassName() << ":\tReal Type: " << *VInput << "\n";
 
   auto casted = isa<BitCastOperator>(CV)
                     ? builder->CreateBitCast(V, VTypeInput->getPointerTo())
