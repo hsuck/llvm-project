@@ -2588,7 +2588,15 @@ void CodeGenFunction::InitializeVTablePointer(const VPtr &Vptr) {
   VTableField = Builder.CreateElementBitCast(VTableField, VTablePtrTy);
   VTableAddressPoint = Builder.CreateBitCast(VTableAddressPoint, VTablePtrTy);
 
-  llvm::StoreInst *Store = Builder.CreateStore(VTableAddressPoint, VTableField);
+  /* llvm::StoreInst *Store = Builder.CreateStore(VTableAddressPoint, VTableField); */
+  // TODO(hsuck): Add an option to enable.
+  // PACing the address point.
+  auto autcall = llvm::Intrinsic::getDeclaration(&CGM.getModule(), llvm::Intrinsic::pa_pacia,
+                                                 {VTableAddressPoint->getType()});
+  auto mod = llvm::Constant::getIntegerValue(CGM.Int64Ty, llvm::APInt(64, 0));
+  auto paced = Builder.CreateCall(autcall, {VTableAddressPoint, mod}, "");
+
+  llvm::StoreInst *Store = Builder.CreateStore(paced, VTableField);
   TBAAAccessInfo TBAAInfo = CGM.getTBAAVTablePtrAccessInfo(VTablePtrTy);
   CGM.DecorateInstructionWithTBAA(Store, TBAAInfo);
   if (CGM.getCodeGenOpts().OptimizationLevel > 0 &&
@@ -2684,14 +2692,24 @@ llvm::Value *CodeGenFunction::GetVTablePtr(Address This,
                                            const CXXRecordDecl *RD) {
   Address VTablePtrSrc = Builder.CreateElementBitCast(This, VTableTy);
   llvm::Instruction *VTable = Builder.CreateLoad(VTablePtrSrc, "vtable");
+  // TODO(hsuck): Add an option to enable.
+  // unPACing the VPtr.
+  auto autcall = llvm::Intrinsic::getDeclaration(&CGM.getModule(), llvm::Intrinsic::pa_autia,
+                                                 {VTable->getType()});
+  auto mod = llvm::Constant::getIntegerValue(CGM.Int64Ty, llvm::APInt(64, 0));
+  auto auted = Builder.CreateCall(autcall, {VTable, mod}, "");
+
   TBAAAccessInfo TBAAInfo = CGM.getTBAAVTablePtrAccessInfo(VTableTy);
-  CGM.DecorateInstructionWithTBAA(VTable, TBAAInfo);
+  /* CGM.DecorateInstructionWithTBAA(VTable, TBAAInfo); */
+  CGM.DecorateInstructionWithTBAA(auted, TBAAInfo);
 
   if (CGM.getCodeGenOpts().OptimizationLevel > 0 &&
       CGM.getCodeGenOpts().StrictVTablePointers)
-    CGM.DecorateInstructionWithInvariantGroup(VTable, RD);
+    /* CGM.DecorateInstructionWithInvariantGroup(VTable, RD); */
+    CGM.DecorateInstructionWithInvariantGroup(auted, RD);
 
-  return VTable;
+  /* return VTable; */
+  return auted;
 }
 
 // If a class has a single non-virtual base and does not introduce or override
