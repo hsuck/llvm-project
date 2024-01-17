@@ -2585,6 +2585,8 @@ void CodeGenFunction::InitializeVTablePointer(const VPtr &Vptr) {
           ->getPointerTo(GlobalsAS);
   // vtable field is is derived from `this` pointer, therefore they should be in
   // the same addr space. Note that this might not be LLVM address space 0.
+  /* llvm::outs() << __FUNCTION__ << ": " << *VTablePtrTy << '\n'; */
+  /* llvm::outs() << __FUNCTION__ << ": " << *VTableAddressPoint << '\n'; */
   VTableField = Builder.CreateElementBitCast(VTableField, VTablePtrTy);
   VTableAddressPoint = Builder.CreateBitCast(VTableAddressPoint, VTablePtrTy);
 
@@ -2593,7 +2595,8 @@ void CodeGenFunction::InitializeVTablePointer(const VPtr &Vptr) {
   // PACing the address point.
   auto autcall = llvm::Intrinsic::getDeclaration(&CGM.getModule(), llvm::Intrinsic::pa_pacia,
                                                  {VTableAddressPoint->getType()});
-  auto mod = llvm::Constant::getIntegerValue(CGM.Int64Ty, llvm::APInt(64, 0));
+  /* auto mod = llvm::Constant::getIntegerValue(CGM.Int64Ty, llvm::APInt(64, 0)); */
+  auto mod = Builder.CreateBitCast(VTableField.getPointer(), VTableField.getType());
   auto paced = Builder.CreateCall(autcall, {VTableAddressPoint, mod}, "");
 
   llvm::StoreInst *Store = Builder.CreateStore(paced, VTableField);
@@ -2690,13 +2693,17 @@ void CodeGenFunction::InitializeVTablePointers(const CXXRecordDecl *RD) {
 llvm::Value *CodeGenFunction::GetVTablePtr(Address This,
                                            llvm::Type *VTableTy,
                                            const CXXRecordDecl *RD) {
+  /* llvm::outs() << __FUNCTION__ << ": " << This.getName() << '\n'; */
+  /* llvm::outs() << __FUNCTION__ << ": " << *VTableTy << '\n'; */
   Address VTablePtrSrc = Builder.CreateElementBitCast(This, VTableTy);
+  /* llvm::outs() << __FUNCTION__ << ": " << *(VTablePtrSrc.getType()) << '\n'; */
   llvm::Instruction *VTable = Builder.CreateLoad(VTablePtrSrc, "vtable");
   // TODO(hsuck): Add an option to enable.
   // unPACing the VPtr.
   auto autcall = llvm::Intrinsic::getDeclaration(&CGM.getModule(), llvm::Intrinsic::pa_autia,
                                                  {VTable->getType()});
-  auto mod = llvm::Constant::getIntegerValue(CGM.Int64Ty, llvm::APInt(64, 0));
+  /* auto mod = llvm::Constant::getIntegerValue(CGM.Int64Ty, llvm::APInt(64, 0)); */
+  auto mod = Builder.CreateBitCast(VTablePtrSrc.getPointer(), VTablePtrSrc.getType());
   auto auted = Builder.CreateCall(autcall, {VTable, mod}, "");
 
   TBAAAccessInfo TBAAInfo = CGM.getTBAAVTablePtrAccessInfo(VTableTy);

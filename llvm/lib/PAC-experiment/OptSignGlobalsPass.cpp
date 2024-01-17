@@ -2,6 +2,7 @@
 
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Demangle/Demangle.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -9,6 +10,7 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
+#include <map>
 
 // PAC-experiment
 #include "llvm/PAC-experiment/OptUtil.h"
@@ -61,22 +63,55 @@ bool OptSignGlobalsPass::runOnModule(Module &M) {
       if (Global->getName().equals("llvm.global_ctors"))
         continue;
 
+      /* outs() << getPassName() << ":\n\tGlobal name: " << Global->getName() << "\n"; */
+
+      int status = 0;
+      char *demangled = NULL;
+      if ((demangled =
+              itaniumDemangle(Global->getName().str().c_str(), NULL, NULL, &status)) != NULL) {
+        /* outs() << "\tDemangled name: " << demangled << '\n'; */
+        /* outs() << "==============================\n"; */
+        if (StringRef(demangled).contains("vtable"))
+          continue;
+      }
+
+      /* outs() << "\t\tValue: " << *CV << "\n"; */
+      /* outs() << "\t\tType: " << *CVTy << "\n"; */
+      /* outs() << "\t\tGlobal Type: " << *(Global->getType()) << "\n"; */
+
       // TODO(hsuck): sign this global variable.
       if (handle(M, &*Global, CV, CVTy)) {
-        outs() << getPassName() << ":\tGlobal name: " << Global->getName() << "\n";
-        /* outs() << "Value: " << *CV << "\n"; */
-        /* outs() << "Type: " << *CVTy << "\n"; */
-        outs() << getPassName() << ":\tGlobal Type: " << *(Global->getType()) << "\n";
         if (Global->isConstant())
           Global->setConstant(false);
-        /* outs() << "===============\n"; */
       }
+      /* outs() << "==============================\n"; */
     }
   }
 
   builder->CreateRetVoid();
   builder = nullptr;
   appendToGlobalCtors(M, funcSignGlobals, 0);
+
+  /* std::map<const FunctionType *, uint64_t> FuncType; */
+  /* errs() << M.getName() << '\n'; */
+  /* for (auto &F : M) { */
+  /*   if (F.getName().equals("__pac_sign_globals") || */
+  /*       F.getName().contains("llvm")) */
+  /*     continue; */
+  /*   /1* errs() << F.getName() << ": " << *(F.getFunctionType()) << '\n'; *1/ */
+  /*   FunctionType *funcTy = F.getFunctionType(); */
+  /*   decltype(FuncType)::iterator id = FuncType.find(funcTy); */
+  /*   if (id != FuncType.end()) */
+  /*     id->second++; */
+
+  /*   FuncType.emplace(funcTy, 1); */
+  /* } */
+
+  /* errs() << "Total number of functions: " << FuncType.size() << '\n'; */
+  /* for (auto funcTy = FuncType.begin(); funcTy != FuncType.end(); ++funcTy) { */
+  /*   errs() << *(funcTy->first) << ": " << funcTy->second << '\n'; */
+  /* } */
+  /* outs() << "==============================\n"; */
 
   return true;
 }
@@ -159,11 +194,13 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
 bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
                                 PointerType *Ty) {
   /* outs() << __LINE__ << ": " << __FUNCTION__ << '\n'; */
-  outs() << getPassName() << ":\tValue: " << *CV << "\n";
-  outs() << getPassName() << ":\tType: " << *Ty << "\n";
+  /* outs() << getPassName() << ":\tValue: " << *CV << "\n"; */
+  /* outs() << getPassName() << ":\tType: " << *Ty << "\n"; */
 
   if (!needPAC(CV, Ty))
     return false;
+
+  outs() << "\t\tNeed PAC !\n";
 
   auto VTypeInput = (isa<BitCastOperator>(CV) &&
                     dyn_cast<BitCastOperator>(CV)->getDestTy()->getPointerElementType()->isIntegerTy())
@@ -175,8 +212,8 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
 
   assert((isa<BitCastOperator>(CV) || Ty == VTypeInput));
 
-  outs() << getPassName() << ":\tReal value: " << *VTypeInput << "\n";
-  outs() << getPassName() << ":\tReal Type: " << *VInput << "\n";
+  /* outs() << getPassName() << ":\tReal value: " << *VTypeInput << "\n"; */
+  /* outs() << getPassName() << ":\tReal Type: " << *VInput << "\n"; */
 
   auto casted = isa<BitCastOperator>(CV)
                     ? builder->CreateBitCast(V, VTypeInput->getPointerTo())

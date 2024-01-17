@@ -582,6 +582,7 @@ void AArch64PassConfig::addIRPasses() {
 	if (PAC::isPACFeCfi()) {
 		addPass(PAC::createOptSignGlobalsPass());
 		addPass(PAC::createOptCpiPass());
+		addPass(PAC::createOptFindCtorsPass());
 	}
 
   TargetPassConfig::addIRPasses();

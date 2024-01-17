@@ -65,7 +65,7 @@ bool OptCpiPass::runOnFunction(Function &F) {
   if (F.hasFnAttribute("no-pac"))
     return false;
 
-  outs() << getPassName() << ": " << F.getName() << '\n';
+  /* outs() << getPassName() << ": " << F.getName() << '\n'; */
 
   const TargetLibraryInfo &TLI =
       getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
@@ -141,6 +141,14 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
   LibFunc Func;
   bool isLibFn = false;
 
+  // if the call is a virtual member function call, we do not replace
+  // br/blr by braa/blraa.
+  if (CI->hasMetadata("pac_disabled")) {
+    /* outs() << "Virtual call\n"; */
+    /* outs() << *CI << '\n'; */
+    goto handle_args;
+  }
+
   // Handle indirect call
   if (CI->isIndirectCall()) {
     auto calledValue = CI->getCalledOperand();
@@ -158,6 +166,7 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
     CI->setCalledOperand(paced);
   }
 
+handle_args:
   // handle externel function call
   if (calledFunc != nullptr) {
     if (TLI)
@@ -185,7 +194,7 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
         }
       }
     } else if (calledFunc->getName().contains("sigaction")) {
-      outs() << "Find sigaction()\n";
+      /* outs() << "Find sigaction()\n"; */
       auto arg = CI->getArgOperand(1);
       const auto argTy =
           dyn_cast<StructType>(arg->getType()->getPointerElementType());
@@ -248,7 +257,7 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
               }
               prevI = prevI->getPrevNode();
             }
-            outs() << "Real Intra Element Type: " << *intraElementTy << "\n";
+            /* outs() << "Real Intra Element Type: " << *intraElementTy << "\n"; */
 
             /* outs() << "Instrumentations before call: \n"; */
             auto casted = Builder.CreateBitCast(elementPtr,
@@ -323,7 +332,8 @@ CallInst *OptCpiPass::genPACedValue(Function &F, Instruction &I, Value *V,
   assert((isa<BitCastOperator>(V) || V->getType() == VTypeInput));
 
   // Create PA intrinsic (pacia)
-  outs() << getPassName() << ":\n" << I << '\n'
+  outs() << getPassName() << ":\n\t" << F.getName()
+         << ":\n\t" << I << '\n'
          << "Create pacia intrinsic here\n";
 
   if (isa<StoreInst>(&I)) {
@@ -348,7 +358,7 @@ CallInst *OptCpiPass::genPACedValue(Function &F, Instruction &I, Value *V,
 
 bool OptCpiPass::regenPACedValue(Function &F, Instruction &I, Value *V,
                                  Intrinsic::ID intrinsicID) {
-  outs() << *V << '\n';
+  /* outs() << *V << '\n'; */
   if (!isa<BitCastOperator>(V) ||
       dyn_cast<BitCastOperator>(V)->getDestTy()->getPointerElementType()->isIntegerTy())
     // void *
@@ -361,8 +371,8 @@ bool OptCpiPass::regenPACedValue(Function &F, Instruction &I, Value *V,
       !VTypeInput->getPointerElementType()->isFunctionTy())
     return false;
 
-  outs() << getPassName() << ":\n" << I
-         << "\nre-generate PAC\n";
+  /* outs() << getPassName() << ":\n" << I */
+  /*        << "\nre-generate PAC\n"; */
 
   auto nextI = I.getNextNode();
   auto BB = nextI->getParent(); // BB before and contains store

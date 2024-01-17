@@ -48,7 +48,7 @@ void genTypeStr(const Type *T, raw_string_ostream &O) {
 
     for (auto param = funcTy->param_begin(); param != funcTy->param_end();
         ++param) {
-      outs() << __FUNCTION__  << ":\tparamTy: " << **param << '\n';
+      /* outs() << __FUNCTION__  << ":\tparamTy: " << **param << '\n'; */
       genTypeStr(*param, O);
     }
     break;
@@ -107,7 +107,7 @@ uint64_t getTypeIDFor(const Type *T) {
 
   TypeIDCache.emplace(T, theTypeID);
 
-  outs() << "Type ID: " << theTypeID << '\n';
+  /* outs() << "Type ID: " << theTypeID << '\n'; */
   return theTypeID;
 }
 } // namespace

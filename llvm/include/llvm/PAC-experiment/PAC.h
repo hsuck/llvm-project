@@ -8,15 +8,14 @@
 #include "llvm/Pass.h"
 
 namespace llvm {
-
 namespace PAC {
 
 bool isPACFeCfi();
 
 Pass *createOptCpiPass();
 Pass *createOptSignGlobalsPass();
+Pass *createOptFindCtorsPass();
 
 } // namespace PAC
-
 } // namespace llvm
 #endif // LLVM_PAC_EXP_H
