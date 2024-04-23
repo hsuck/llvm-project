@@ -29,6 +29,7 @@ struct OptSignGlobalsPass : public ModulePass {
 
   bool runOnModule(Module &M) override;
   bool needPAC(Constant *CV, PointerType *CVTy);
+  bool isVoidTyOrVoidFp(Constant *CV);
   bool handle(Module &M, Value *V, Constant *CV, Type *Ty);
   bool handle(Module &M, Value *V, Constant *CV, PointerType *Ty);
   bool handle(Module &M, Value *V, Constant *CV, ArrayType *Ty);
@@ -93,25 +94,60 @@ bool OptSignGlobalsPass::runOnModule(Module &M) {
   appendToGlobalCtors(M, funcSignGlobals, 0);
 
   /* std::map<const FunctionType *, uint64_t> FuncType; */
+  /* std::map<const Type *, uint64_t> IndirectCallType; */
   /* errs() << M.getName() << '\n'; */
   /* for (auto &F : M) { */
   /*   if (F.getName().equals("__pac_sign_globals") || */
   /*       F.getName().contains("llvm")) */
   /*     continue; */
-  /*   /1* errs() << F.getName() << ": " << *(F.getFunctionType()) << '\n'; *1/ */
+
   /*   FunctionType *funcTy = F.getFunctionType(); */
   /*   decltype(FuncType)::iterator id = FuncType.find(funcTy); */
   /*   if (id != FuncType.end()) */
   /*     id->second++; */
+  /*   else */
+  /*     FuncType.emplace(funcTy, 1); */
 
-  /*   FuncType.emplace(funcTy, 1); */
+  /*   for (auto &BB : F) { */
+  /*     for (auto &I : BB) { */
+  /*       if (I.getOpcode() == Instruction::Call) { */
+  /*         auto CI = dyn_cast<CallInst>(&I); */
+  /*         if (CI->isIndirectCall()) { */
+  /*           auto calledValue = CI->getCalledOperand(); */
+  /*           auto calledValueType = calledValue->getType(); */
+
+  /*           errs() << "Indirect Call Type: " << *calledValueType << '\n'; */
+  /*           if (isa<BitCastOperator>(calledValue)) { */
+  /*             auto BCO = dyn_cast<BitCastOperator>(calledValue); */ 
+  /*             errs() << "Indirect Call Type(Src): " << *(BCO->getSrcTy()) << '\n'; */
+  /*             errs() << "Indirect Call Type(Dest): " << *(BCO->getDestTy()) << '\n'; */
+  /*           } */
+
+  /*           decltype(IndirectCallType)::iterator _id = */ 
+  /*               IndirectCallType.find(calledValueType); */
+  /*           if (_id != IndirectCallType.end()) */
+  /*             _id->second++; */
+  /*           else */
+  /*             IndirectCallType.emplace(calledValueType, 1); */
+  /*         } */
+  /*       } */
+  /*     } */
+  /*   } */
   /* } */
 
   /* errs() << "Total number of functions: " << FuncType.size() << '\n'; */
   /* for (auto funcTy = FuncType.begin(); funcTy != FuncType.end(); ++funcTy) { */
   /*   errs() << *(funcTy->first) << ": " << funcTy->second << '\n'; */
   /* } */
-  /* outs() << "==============================\n"; */
+
+  /* if (IndirectCallType.size() != 0) { */
+  /*   errs() << "Total number of indirect call: " << IndirectCallType.size() << '\n'; */
+  /*   for (auto indirectCallTy = IndirectCallType.begin(); indirectCallTy != IndirectCallType.end(); */
+  /*       ++indirectCallTy) { */
+  /*     errs() << *(indirectCallTy->first) << ": " << indirectCallTy->second << '\n'; */
+  /* } */
+  /* } */
+  /* errs() << "==============================\n"; */
 
   return true;
 }
@@ -191,6 +227,22 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
 
   return true;
 }
+
+bool OptSignGlobalsPass::isVoidTyOrVoidFp(Constant *CV) { 
+  auto Ty = dyn_cast<BitCastOperator>(CV)->getDestTy()->getPointerElementType();
+  // void *
+  bool isVoidTy = Ty->isIntegerTy();
+  bool isVoidFp = false;
+
+  if (Ty->isFunctionTy()) {
+    auto retTy = dyn_cast<FunctionType>(Ty)->getReturnType();
+    if (!Ty->getFunctionNumParams() && retTy->isVoidTy())
+      isVoidFp = true;
+  }
+
+  return isVoidTy | isVoidFp;
+}
+
 bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
                                 PointerType *Ty) {
   /* outs() << __LINE__ << ": " << __FUNCTION__ << '\n'; */
@@ -200,10 +252,9 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
   if (!needPAC(CV, Ty))
     return false;
 
-  outs() << "\t\tNeed PAC !\n";
+  /* outs() << "\t\tNeed PAC !\n"; */
 
-  auto VTypeInput = (isa<BitCastOperator>(CV) &&
-                    dyn_cast<BitCastOperator>(CV)->getDestTy()->getPointerElementType()->isIntegerTy())
+  auto VTypeInput = (isa<BitCastOperator>(CV) && isVoidTyOrVoidFp(CV))
                   ? dyn_cast<BitCastOperator>(CV)->getSrcTy()
                   : Ty;
   auto VInput = (isa<BitCastOperator>(CV))
@@ -212,8 +263,8 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
 
   assert((isa<BitCastOperator>(CV) || Ty == VTypeInput));
 
-  /* outs() << getPassName() << ":\tReal value: " << *VTypeInput << "\n"; */
-  /* outs() << getPassName() << ":\tReal Type: " << *VInput << "\n"; */
+  /* outs() << getPassName() << ":\tReal value: " << *VInput << "\n"; */
+  /* outs() << getPassName() << ":\tReal Type: " << *VTypeInput << "\n"; */
 
   auto casted = isa<BitCastOperator>(CV)
                     ? builder->CreateBitCast(V, VTypeInput->getPointerTo())

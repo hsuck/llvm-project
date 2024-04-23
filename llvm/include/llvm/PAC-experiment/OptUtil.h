@@ -15,6 +15,7 @@ CallInst *createPACIntrinsic(Function &F, Instruction &I, Value *calledValue,
                              Type *calledValueType, Intrinsic::ID intrinsicID);
 Value *createPACIntrinsic(IRBuilder<> *builder, Module &M, Value *V, Type *T,
                           Intrinsic::ID intrinsicID);
+uint64_t getTypeIDFor(const Type *T);
 } // namespace OptUtil
 } // namespace PAC
 } // namespace llvm

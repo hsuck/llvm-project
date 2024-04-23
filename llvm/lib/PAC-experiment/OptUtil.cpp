@@ -47,7 +47,7 @@ void genTypeStr(const Type *T, raw_string_ostream &O) {
     genTypeStr(funcTy->getReturnType(), O);
 
     for (auto param = funcTy->param_begin(); param != funcTy->param_end();
-        ++param) {
+         ++param) {
       /* outs() << __FUNCTION__  << ":\tparamTy: " << **param << '\n'; */
       genTypeStr(*param, O);
     }
@@ -73,8 +73,9 @@ void genTypeStr(const Type *T, raw_string_ostream &O) {
     break;
   }
 }
+} // namespace
 
-uint64_t getTypeIDFor(const Type *T) {
+uint64_t OptUtil::getTypeIDFor(const Type *T) {
   if (!T->isPointerTy())
     return 0;
 
@@ -89,7 +90,7 @@ uint64_t getTypeIDFor(const Type *T) {
   genTypeStr(T, typeStr);
   typeStr.flush();
 
-  outs() << "Type String: " << typeStr.str() << '\n';
+  /* outs() << "Type String: " << typeStr.str() << '\n'; */
 
   auto rawbuf = buf.c_str();
   mbedtls_sha3_context C;
@@ -110,7 +111,6 @@ uint64_t getTypeIDFor(const Type *T) {
   /* outs() << "Type ID: " << theTypeID << '\n'; */
   return theTypeID;
 }
-} // namespace
 
 CallInst *OptUtil::createPACIntrinsic(Function &F, Instruction &I,
                                       Value *calledValue, Type *calledValueType,
@@ -121,7 +121,8 @@ CallInst *OptUtil::createPACIntrinsic(Function &F, Instruction &I,
   auto autcall = Intrinsic::getDeclaration(F.getParent(), intrinsicID,
                                            {calledValue->getType()});
   /* auto modifier = */
-  /*      Constant::getIntegerValue(Type::getInt64Ty(F.getContext()), APInt(64, 0)); */
+  /*      Constant::getIntegerValue(Type::getInt64Ty(F.getContext()), APInt(64,
+   * 0)); */
   auto modifier =
       Constant::getIntegerValue(Type::getInt64Ty(F.getContext()),
                                 APInt(64, getTypeIDFor(calledValueType)));
@@ -135,7 +136,8 @@ Value *OptUtil::createPACIntrinsic(IRBuilder<> *builder, Module &M, Value *V,
   // Get PA intrinsic declaration for correct input type
   auto autcall = Intrinsic::getDeclaration(&M, intrinsicID, {V->getType()});
   /* auto modifier = */
-  /*      Constant::getIntegerValue(Type::getInt64Ty(M.getContext()), APInt(64, 0)); */
+  /*      Constant::getIntegerValue(Type::getInt64Ty(M.getContext()), APInt(64,
+   * 0)); */
   auto modifier = Constant::getIntegerValue(Type::getInt64Ty(M.getContext()),
                                             APInt(64, getTypeIDFor(T)));
 

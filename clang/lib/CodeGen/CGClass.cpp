@@ -2690,33 +2690,64 @@ void CodeGenFunction::InitializeVTablePointers(const CXXRecordDecl *RD) {
     CGM.getCXXABI().initializeHiddenVirtualInheritanceMembers(*this, RD);
 }
 
-llvm::Value *CodeGenFunction::GetVTablePtr(Address This,
-                                           llvm::Type *VTableTy,
+llvm::Value *CodeGenFunction::GetVTablePtr(Address This, llvm::Type *VTableTy,
                                            const CXXRecordDecl *RD) {
-  /* llvm::outs() << __FUNCTION__ << ": " << This.getName() << '\n'; */
-  /* llvm::outs() << __FUNCTION__ << ": " << *VTableTy << '\n'; */
+  /* static unsigned int fctCreated = 0; */
+  static llvm::Function *funcAut = nullptr;
   Address VTablePtrSrc = Builder.CreateElementBitCast(This, VTableTy);
-  /* llvm::outs() << __FUNCTION__ << ": " << *(VTablePtrSrc.getType()) << '\n'; */
   llvm::Instruction *VTable = Builder.CreateLoad(VTablePtrSrc, "vtable");
+
   // TODO(hsuck): Add an option to enable.
   // unPACing the VPtr.
-  auto autcall = llvm::Intrinsic::getDeclaration(&CGM.getModule(), llvm::Intrinsic::pa_autia,
-                                                 {VTable->getType()});
-  /* auto mod = llvm::Constant::getIntegerValue(CGM.Int64Ty, llvm::APInt(64, 0)); */
-  auto mod = Builder.CreateBitCast(VTablePtrSrc.getPointer(), VTablePtrSrc.getType());
-  auto auted = Builder.CreateCall(autcall, {VTable, mod}, "");
+  if (!funcAut) {
+    std::vector<llvm::Type *> args(2, CGM.Int64Ty);
+    llvm::FunctionType *prototype =
+        llvm::FunctionType::get(CGM.Int64Ty, args, false);
+    funcAut = llvm::Function::Create(prototype, llvm::Function::PrivateLinkage,
+                                     "__pac_aut_vtable", &CGM.getModule());
 
+    funcAut->addFnAttr("no-pac", "true");
+    funcAut->addFnAttr("noinline", "true");
+
+    auto BB = llvm::BasicBlock::Create(CGM.getLLVMContext(), "entry", funcAut);
+    llvm::IRBuilder<> BuilderAutEntry(BB);
+
+    auto stripped = BuilderAutEntry.CreateAnd(
+        funcAut->getArg(0),
+        llvm::ConstantInt::get(CGM.Int64Ty, 0xffff000000000000));
+    auto cmp = BuilderAutEntry.CreateICmpEQ(
+        stripped, llvm::ConstantInt::get(CGM.Int64Ty, 0));
+    auto autBB = llvm::BasicBlock::Create(CGM.getLLVMContext(), "aut", funcAut);
+    auto retBB = llvm::BasicBlock::Create(CGM.getLLVMContext(), "ret", funcAut);
+    BuilderAutEntry.CreateCondBr(cmp, retBB, autBB);
+
+    llvm::IRBuilder<> BuilderAut(autBB);
+    llvm::IRBuilder<> BuilderRet(retBB);
+
+    auto autcall = llvm::Intrinsic::getDeclaration(
+        &CGM.getModule(), llvm::Intrinsic::pa_autia,
+        {funcAut->getArg(0)->getType()});
+    auto auted = BuilderAut.CreateCall(
+        autcall, {funcAut->getArg(0), funcAut->getArg(1)}, "");
+
+    BuilderAut.CreateRet(auted);
+    BuilderRet.CreateRet(funcAut->getArg(0));
+  }
+  auto mod =
+      Builder.CreateBitCast(VTablePtrSrc.getPointer(), VTablePtrSrc.getType());
+  auto CI = Builder.CreateCall(funcAut, {VTable, mod});
   TBAAAccessInfo TBAAInfo = CGM.getTBAAVTablePtrAccessInfo(VTableTy);
   /* CGM.DecorateInstructionWithTBAA(VTable, TBAAInfo); */
-  CGM.DecorateInstructionWithTBAA(auted, TBAAInfo);
+  CGM.DecorateInstructionWithTBAA(CI, TBAAInfo);
 
   if (CGM.getCodeGenOpts().OptimizationLevel > 0 &&
       CGM.getCodeGenOpts().StrictVTablePointers)
     /* CGM.DecorateInstructionWithInvariantGroup(VTable, RD); */
-    CGM.DecorateInstructionWithInvariantGroup(auted, RD);
+    CGM.DecorateInstructionWithInvariantGroup(CI, RD);
 
+  /* fctCreated = 1; */
   /* return VTable; */
-  return auted;
+  return CI;
 }
 
 // If a class has a single non-virtual base and does not introduce or override
