@@ -638,6 +638,9 @@ static void EmitMemberInitializer(CodeGenFunction &CGF,
   // non-static data member initializers.
   FieldDecl *Field = MemberInit->getAnyMember();
   QualType FieldType = Field->getType();
+  const clang::Type *t = FieldType.getTypePtr();
+  /* llvm::outs() << __FUNCTION__ << ": " << Field->getQualifiedNameAsString() */
+  /*              << " " << FieldType << '\n'; */
 
   llvm::Value *ThisPtr = CGF.LoadCXXThis();
   QualType RecordTy = CGF.getContext().getTypeDeclType(ClassDecl);

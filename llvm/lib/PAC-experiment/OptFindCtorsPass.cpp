@@ -38,7 +38,6 @@ static RegisterPass<OptFindCtorsPass> X("opt-ctors-pass",
 Pass *llvm::PAC::createOptFindCtorsPass() { return new OptFindCtorsPass(); }
 
 bool OptFindCtorsPass::runOnFunction(Function &F) {
-  return false;
   ItaniumPartialDemangler Demangler;
 
   if (Demangler.partialDemangle(F.getName().str().c_str())) {

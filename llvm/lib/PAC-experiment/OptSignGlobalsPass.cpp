@@ -16,6 +16,8 @@
 #include "llvm/PAC-experiment/OptUtil.h"
 #include "llvm/PAC-experiment/PAC.h"
 
+#define STATISTICS 0
+
 using namespace llvm;
 using namespace llvm::PAC;
 using namespace llvm::PAC::OptUtil;
@@ -64,14 +66,12 @@ bool OptSignGlobalsPass::runOnModule(Module &M) {
       if (Global->getName().equals("llvm.global_ctors"))
         continue;
 
-      /* outs() << getPassName() << ":\n\tGlobal name: " << Global->getName() << "\n"; */
+      /* outs() << getPassName() << ": Global name: " << Global->getName() << "\n"; */
 
       int status = 0;
       char *demangled = NULL;
-      if ((demangled =
-              itaniumDemangle(Global->getName().str().c_str(), NULL, NULL, &status)) != NULL) {
-        /* outs() << "\tDemangled name: " << demangled << '\n'; */
-        /* outs() << "==============================\n"; */
+      if ((demangled = itaniumDemangle(Global->getName().str().c_str(), NULL,
+                                       NULL, &status)) != NULL) {
         if (StringRef(demangled).contains("vtable"))
           continue;
       }
@@ -80,7 +80,6 @@ bool OptSignGlobalsPass::runOnModule(Module &M) {
       /* outs() << "\t\tType: " << *CVTy << "\n"; */
       /* outs() << "\t\tGlobal Type: " << *(Global->getType()) << "\n"; */
 
-      // TODO(hsuck): sign this global variable.
       if (handle(M, &*Global, CV, CVTy)) {
         if (Global->isConstant())
           Global->setConstant(false);
@@ -93,67 +92,72 @@ bool OptSignGlobalsPass::runOnModule(Module &M) {
   builder = nullptr;
   appendToGlobalCtors(M, funcSignGlobals, 0);
 
-  /* std::map<const FunctionType *, uint64_t> FuncType; */
-  /* std::map<const Type *, uint64_t> IndirectCallType; */
-  /* errs() << M.getName() << '\n'; */
-  /* for (auto &F : M) { */
-  /*   if (F.getName().equals("__pac_sign_globals") || */
-  /*       F.getName().contains("llvm")) */
-  /*     continue; */
+#if STATISTICS == 1
+  std::map<const FunctionType *, uint64_t> FuncType;
+  std::map<const Type *, uint64_t> IndirectCallType;
+  errs() << M.getName() << '\n';
+  for (auto &F : M) {
+    if (F.getName().equals("__pac_sign_globals") ||
+        F.getName().contains("llvm"))
+      continue;
 
-  /*   FunctionType *funcTy = F.getFunctionType(); */
-  /*   decltype(FuncType)::iterator id = FuncType.find(funcTy); */
-  /*   if (id != FuncType.end()) */
-  /*     id->second++; */
-  /*   else */
-  /*     FuncType.emplace(funcTy, 1); */
+    FunctionType *funcTy = F.getFunctionType();
+    decltype(FuncType)::iterator id = FuncType.find(funcTy);
+    if (id != FuncType.end())
+      id->second++;
+    else
+      FuncType.emplace(funcTy, 1);
 
-  /*   for (auto &BB : F) { */
-  /*     for (auto &I : BB) { */
-  /*       if (I.getOpcode() == Instruction::Call) { */
-  /*         auto CI = dyn_cast<CallInst>(&I); */
-  /*         if (CI->isIndirectCall()) { */
-  /*           auto calledValue = CI->getCalledOperand(); */
-  /*           auto calledValueType = calledValue->getType(); */
+    for (auto &BB : F) {
+      for (auto &I : BB) {
+        if (I.getOpcode() == Instruction::Call) {
+          auto CI = dyn_cast<CallInst>(&I);
+          if (CI->isIndirectCall()) {
+            auto calledValue = CI->getCalledOperand();
+            auto calledValueType = calledValue->getType();
 
-  /*           errs() << "Indirect Call Type: " << *calledValueType << '\n'; */
-  /*           if (isa<BitCastOperator>(calledValue)) { */
-  /*             auto BCO = dyn_cast<BitCastOperator>(calledValue); */ 
-  /*             errs() << "Indirect Call Type(Src): " << *(BCO->getSrcTy()) << '\n'; */
-  /*             errs() << "Indirect Call Type(Dest): " << *(BCO->getDestTy()) << '\n'; */
-  /*           } */
+            errs() << "Indirect Call Type: " << *calledValueType << '\n';
+            if (isa<BitCastOperator>(calledValue)) {
+              auto BCO = dyn_cast<BitCastOperator>(calledValue);
+              errs() << "Indirect Call Type(Src): " << *(BCO->getSrcTy())
+                     << '\n';
+              errs() << "Indirect Call Type(Dest): " << *(BCO->getDestTy())
+                     << '\n';
+            }
 
-  /*           decltype(IndirectCallType)::iterator _id = */ 
-  /*               IndirectCallType.find(calledValueType); */
-  /*           if (_id != IndirectCallType.end()) */
-  /*             _id->second++; */
-  /*           else */
-  /*             IndirectCallType.emplace(calledValueType, 1); */
-  /*         } */
-  /*       } */
-  /*     } */
-  /*   } */
-  /* } */
+            decltype(IndirectCallType)::iterator _id =
+                IndirectCallType.find(calledValueType);
+            if (_id != IndirectCallType.end())
+              _id->second++;
+            else
+              IndirectCallType.emplace(calledValueType, 1);
+          }
+        }
+      }
+    }
+  }
 
-  /* errs() << "Total number of functions: " << FuncType.size() << '\n'; */
-  /* for (auto funcTy = FuncType.begin(); funcTy != FuncType.end(); ++funcTy) { */
-  /*   errs() << *(funcTy->first) << ": " << funcTy->second << '\n'; */
-  /* } */
+  errs() << "Total number of functions: " << FuncType.size() << '\n';
+  for (auto funcTy = FuncType.begin(); funcTy != FuncType.end(); ++funcTy) {
+    errs() << *(funcTy->first) << ": " << funcTy->second << '\n';
+  }
 
-  /* if (IndirectCallType.size() != 0) { */
-  /*   errs() << "Total number of indirect call: " << IndirectCallType.size() << '\n'; */
-  /*   for (auto indirectCallTy = IndirectCallType.begin(); indirectCallTy != IndirectCallType.end(); */
-  /*       ++indirectCallTy) { */
-  /*     errs() << *(indirectCallTy->first) << ": " << indirectCallTy->second << '\n'; */
-  /* } */
-  /* } */
-  /* errs() << "==============================\n"; */
+  if (IndirectCallType.size() != 0) {
+    errs() << "Total number of indirect call: " << IndirectCallType.size()
+           << '\n';
+    for (auto indirectCallTy = IndirectCallType.begin();
+         indirectCallTy != IndirectCallType.end(); ++indirectCallTy) {
+      errs() << *(indirectCallTy->first) << ": " << indirectCallTy->second
+             << '\n';
+    }
+  }
+  errs() << "==============================\n";
+#endif
 
   return true;
 }
 
 bool OptSignGlobalsPass::needPAC(Constant *CV, PointerType *CVTy) {
-  /* outs() << __FUNCTION__ << '\n'; */
   auto VTypeInput = isa<BitCastOperator>(CV)
                         ? dyn_cast<BitCastOperator>(CV)->getSrcTy()
                         : CVTy;
@@ -161,8 +165,6 @@ bool OptSignGlobalsPass::needPAC(Constant *CV, PointerType *CVTy) {
                     ? dyn_cast<BitCastOperator>(CV)->getOperand(0)
                     : CV;
 
-  /* outs() << "Value: " << *VInput << "\n"; */
-  /* outs() << "Type: " << *VTypeInput << "\n"; */
 
   // Is a function pointer, and initializer is not NULL
   if (isa<Function>(VInput) && !dyn_cast<Function>(VInput)->isIntrinsic() &&
@@ -173,7 +175,6 @@ bool OptSignGlobalsPass::needPAC(Constant *CV, PointerType *CVTy) {
 }
 
 bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV, Type *Ty) {
-  /* outs() << __FUNCTION__ << '\n'; */
   if (Ty->isArrayTy())
     return handle(M, V, CV, dyn_cast<ArrayType>(Ty));
   if (Ty->isStructTy())
@@ -185,8 +186,6 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV, Type *Ty) {
 }
 bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
                                 ArrayType *Ty) {
-  /* outs() << __LINE__ << ": " << __FUNCTION__ << '\n'; */
-
   bool retVal = false;
   auto &C = M.getContext();
   uint64_t baseAddr = 0;
@@ -213,13 +212,10 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
 }
 bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
                                 StructType *Ty) {
-  /* outs() << __LINE__ << ": " << __FUNCTION__ << '\n'; */
-
   bool retVal = false;
 
   for (auto i = 0U; i < Ty->getNumElements(); ++i) {
     auto elementPtr = builder->CreateStructGEP(Ty, V, i);
-    /* outs() << "GEP: " << *elementPtr << '\n'; */
     auto elementCV = CV->getAggregateElement(i);
     auto elementTy = Ty->getElementType(i);
     retVal |= handle(M, elementPtr, elementCV, elementTy);
@@ -228,7 +224,7 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
   return true;
 }
 
-bool OptSignGlobalsPass::isVoidTyOrVoidFp(Constant *CV) { 
+bool OptSignGlobalsPass::isVoidTyOrVoidFp(Constant *CV) {
   auto Ty = dyn_cast<BitCastOperator>(CV)->getDestTy()->getPointerElementType();
   // void *
   bool isVoidTy = Ty->isIntegerTy();
@@ -245,9 +241,8 @@ bool OptSignGlobalsPass::isVoidTyOrVoidFp(Constant *CV) {
 
 bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
                                 PointerType *Ty) {
-  /* outs() << __LINE__ << ": " << __FUNCTION__ << '\n'; */
-  /* outs() << getPassName() << ":\tValue: " << *CV << "\n"; */
-  /* outs() << getPassName() << ":\tType: " << *Ty << "\n"; */
+  /* outs() << getPassName() << ":\t\tValue: " << *CV << "\n"; */
+  /* outs() << getPassName() << ":\t\tType: " << *Ty << "\n"; */
 
   if (!needPAC(CV, Ty))
     return false;
@@ -263,8 +258,8 @@ bool OptSignGlobalsPass::handle(Module &M, Value *V, Constant *CV,
 
   assert((isa<BitCastOperator>(CV) || Ty == VTypeInput));
 
-  /* outs() << getPassName() << ":\tReal value: " << *VInput << "\n"; */
-  /* outs() << getPassName() << ":\tReal Type: " << *VTypeInput << "\n"; */
+  /* outs() << getPassName() << ":\t\tReal value: " << *VInput << "\n"; */
+  /* outs() << getPassName() << ":\t\tReal Type: " << *VTypeInput << "\n"; */
 
   auto casted = isa<BitCastOperator>(CV)
                     ? builder->CreateBitCast(V, VTypeInput->getPointerTo())

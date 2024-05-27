@@ -4730,6 +4730,7 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
   const ABIArgInfo &RetAI = CallInfo.getReturnInfo();
 
   llvm::FunctionType *IRFuncTy = getTypes().GetFunctionType(CallInfo);
+  /* llvm::outs() << __FUNCTION__ << ": function type= " << *IRFuncTy << '\n'; */
 
   const Decl *TargetDecl = Callee.getAbstractInfo().getCalleeDecl().getDecl();
   if (const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(TargetDecl)) {
@@ -5395,7 +5396,7 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
                               BundleList);
     EmitBlock(Cont);
   }
-  if (Callee.isVirtual()/* && !CI->getCalledFunction()*/) {
+  if (Callee.isVirtual() /* && !CI->getCalledFunction() */) {
     llvm::ConstantInt *Line =
         llvm::ConstantInt::get(Int32Ty, Loc.getRawEncoding());
     llvm::ConstantAsMetadata *MD = llvm::ConstantAsMetadata::get(Line);

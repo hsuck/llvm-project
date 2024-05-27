@@ -120,9 +120,6 @@ CallInst *OptUtil::createPACIntrinsic(Function &F, Instruction &I,
   // Get PA intrinsic declaration for correct input type
   auto autcall = Intrinsic::getDeclaration(F.getParent(), intrinsicID,
                                            {calledValue->getType()});
-  /* auto modifier = */
-  /*      Constant::getIntegerValue(Type::getInt64Ty(F.getContext()), APInt(64,
-   * 0)); */
   auto modifier =
       Constant::getIntegerValue(Type::getInt64Ty(F.getContext()),
                                 APInt(64, getTypeIDFor(calledValueType)));
@@ -135,9 +132,6 @@ Value *OptUtil::createPACIntrinsic(IRBuilder<> *builder, Module &M, Value *V,
                                    Type *T, Intrinsic::ID intrinsicID) {
   // Get PA intrinsic declaration for correct input type
   auto autcall = Intrinsic::getDeclaration(&M, intrinsicID, {V->getType()});
-  /* auto modifier = */
-  /*      Constant::getIntegerValue(Type::getInt64Ty(M.getContext()), APInt(64,
-   * 0)); */
   auto modifier = Constant::getIntegerValue(Type::getInt64Ty(M.getContext()),
                                             APInt(64, getTypeIDFor(T)));
 

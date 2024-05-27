@@ -19,6 +19,20 @@
 #include "llvm/PAC-experiment/OptUtil.h"
 #include "llvm/PAC-experiment/PAC.h"
 
+#define DEMANGLE_NAME 0
+#define CHECK_PAC_BEFORE_AUT 0
+
+#define DEBUG 1
+
+#if DEBUG == 1
+#define DEBUG(X)                                                               \
+  do {                                                                         \
+    X;                                                                         \
+  } while (false)
+#else
+#define DEBUG(X) ((void)0)
+#endif
+
 using namespace llvm;
 using namespace llvm::PAC;
 using namespace llvm::PAC::OptUtil;
@@ -35,6 +49,9 @@ struct OptCpiPass : public FunctionPass {
   bool runOnFunction(Function &F) override;
 
 private:
+  std::string skippedFunctions[5] = {"api_", "atexit", "ios_base",
+                                     "_ZNSolsEPFRSoS_E", "__cxa_throw"};
+
   CallInst *genPACedValue(Function &F, Instruction &I, Value *V,
                           Intrinsic::ID intrinsicID);
   bool regenPACedValue(Function &F, Instruction &I, Value *V,
@@ -44,6 +61,8 @@ private:
                       const TargetLibraryInfo *TLI);
   bool handleStoreInsn(Function &F, Instruction &I);
   bool handleSelectInsn(Function &F, Instruction &I);
+  bool handleInvokeInsn(Function &F, Instruction &I);
+  bool isSkippedFuncs(const StringRef &funcName);
 };
 } // namespace llvm
 
@@ -66,31 +85,35 @@ bool OptCpiPass::runOnFunction(Function &F) {
   if (F.hasFnAttribute("no-pac") || F.getName().contains("api_"))
     return false;
 
-  outs() << getPassName() << ": " << F.getName() << '\n';
+  DEBUG(outs() << getPassName() << ": " << F.getName() << '\n');
 
-  /* ItaniumPartialDemangler Demangler; */
-  /* if (Demangler.partialDemangle(F.getName().str().c_str())) { */
-  /*   errs() << getPassName() << ": Failed to demangle name, " << F.getName() */
-  /*          << '\n'; */
-  /*   return false; */
-  /* } */
+#if DEMANGLE_NAME == 1
+  size_t size = 1;
+  char *buf = static_cast<char *>(std::malloc(size));
+  ItaniumPartialDemangler Demangler;
 
-  /* if (!Demangler.isCtorOrDtor()) */
-  /*   return false; */
+  if (Demangler.partialDemangle(F.getName().str().c_str())) {
+    errs() << getPassName() << ": Failed to demangle name, " << F.getName()
+           << '\n';
+    goto out;
+  }
 
-  /* size_t size = 1; */
-  /* char *buf = static_cast<char *>(std::malloc(size)); */
+  if (!Demangler.isCtorOrDtor())
+    goto out;
 
-  /* outs() << getPassName() << ": " << Demangler.getFunctionBaseName(buf, &size) */
-  /*        << " (" << F.getName() << ") is constructor !\n"; */
+  outs() << getPassName() << ": " << Demangler.getFunctionBaseName(buf, &size)
+         << " (" << F.getName() << ") is constructor !\n";
+#endif
 
+out:
   const TargetLibraryInfo &TLI =
       getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
   bool modified = false;
 
   for (auto &BB : F) {
     for (auto &I : BB) {
-      outs() << getPassName() << ": " << I << '\n';
+      /* if (F.getName().contains("__cxx_global_var_init")) */
+      DEBUG(outs() << getPassName() << ": " << I << '\n');
       modified |= handleInsn(F, I, &TLI);
     }
   }
@@ -104,20 +127,23 @@ bool OptCpiPass::handleInsn(Function &F, Instruction &I,
 
   switch (IOpcode) {
   case Instruction::Store: {
-    /* outs() << getPassName() << ": " << I << '\n'; */
+    /* DEBUG(outs() << getPassName() << ": " << I << '\n'); */
     retVal = handleStoreInsn(F, I);
     break;
   }
   case Instruction::Select: {
-    /* outs() << getPassName() << ": " << I << '\n'; */
+    /* DEBUG(outs() << getPassName() << ": " << I << '\n'); */
     retVal = handleSelectInsn(F, I);
     break;
   }
   case Instruction::Call: {
-    /* outs() << getPassName() << ": " << I << '\n'; */
-    if (F.getName().contains("createOne"))
-      break;
+    /* DEBUG(outs() << getPassName() << ": " << I << '\n'); */
     retVal = handleCallInsn(F, I, TLI);
+    break;
+  }
+  case Instruction::Invoke: {
+    /* DEBUG(outs() << getPassName() << ": " << I << '\n'); */
+    retVal = handleInvokeInsn(F, I);
     break;
   }
   default:
@@ -128,12 +154,42 @@ bool OptCpiPass::handleInsn(Function &F, Instruction &I,
 }
 
 bool OptCpiPass::handleStoreInsn(Function &F, Instruction &I) {
+
   auto SI = dyn_cast<StoreInst>(&I);
+
   CallInst *paced =
       genPACedValue(F, I, SI->getValueOperand(), Intrinsic::pa_pacia);
 
-  if (paced == nullptr)
+  if (paced == nullptr) {
+    auto VInput = SI->getValueOperand();
+    auto VOutput = SI->getPointerOperand();
+    auto VInputType = VInput->getType();
+
+    if (VInputType->isStructTy()) {
+      auto VInputStruTy = dyn_cast<StructType>(VInputType);
+      if (isa<Constant>(VInput)) {
+        IRBuilder<> Builder(I.getNextNode());
+        auto CV = dyn_cast<Constant>(VInput);
+        for (unsigned i = 0; i < VInputStruTy->getNumElements(); ++i) {
+          auto elemCV = CV->getAggregateElement(i);
+          if (isa<PtrToIntOperator>(elemCV)) {
+            auto elemTy = dyn_cast<PtrToIntOperator>(elemCV)
+                              ->getPointerOperand()
+                              ->getType();
+            if (elemTy->isPointerTy() &&
+                elemTy->getPointerElementType()->isFunctionTy()) {
+              auto loaded = Builder.CreateLoad(elemTy, VOutput);
+              auto paced =
+                  createPACIntrinsic(&Builder, *(F.getParent()), loaded,
+                                     loaded->getType(), Intrinsic::pa_pacia);
+              Builder.CreateStore(paced, VOutput);
+            }
+          }
+        }
+      }
+    }
     return regenPACedValue(F, I, SI->getValueOperand(), Intrinsic::pa_pacia);
+  }
 
   SI->setOperand(0, paced);
   return true;
@@ -162,13 +218,20 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
   LibFunc Func;
   bool isLibFn = false;
   static Function *funcAutVTablePara = nullptr, *funcSignVTablePara = nullptr,
-                  *funcAutFP = nullptr;
+                  *funcSignDlsym = nullptr;
+  auto M = F.getParent();
+  auto &C = M->getContext();
+  Type *voidTy = Type::getVoidTy(C);
+  Type *int64Ty = Type::getInt64Ty(C);
+
+#if CHECK_PAC_BEFORE_AUT == 1
+  static Function *funcAutFP = nullptr;
+#endif
 
   // if the call is a virtual member function call, we do not replace
   // br/blr by braa/blraa.
   if (CI->hasMetadata("pac_disabled")) {
-    /* outs() << "Virtual call\n"; */
-    /* outs() << *CI << '\n'; */
+    outs() << getPassName() << ": pac disabled\n";
     goto handle_args;
   }
 
@@ -182,14 +245,31 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
             ? dyn_cast<BitCastOperator>(calledValue)->getDestTy()
             : calledValue->getType();
 
-    /* outs() << getPassName() << ": " << I << '\n'; */
-    /* outs() << getPassName() << ": " << *(CI->getFunctionType()) << '\n'; */
-    outs() << getPassName() << ": " << *calledValue << '\n';
+    /* DEBUG(outs() << getPassName() */
+    /*              << ": called type = " << *(CI->getFunctionType()) << '\n');
+     */
+    /* DEBUG(outs() << getPassName() << ": called value = " << *calledValue */
+    /*              << '\n'); */
 
+    if (isa<PHINode>(calledValue)) {
+      auto incoming = dyn_cast<PHINode>(calledValue)->getIncomingValue(1);
+      if (isa<IntToPtrInst>(incoming) && !isa<LoadInst>(incoming)) {
+        auto ITP = dyn_cast<IntToPtrInst>(incoming);
+        auto BB = ITP->getParent();
+        auto lastInst = BB->getTerminator();
+        IRBuilder<> Builder(lastInst);
+        auto autcall = Intrinsic::getDeclaration(M, Intrinsic::pa_autia,
+                                                 {ITP->getDestTy()});
+        auto mod = Constant::getIntegerValue(
+            Type::getInt64Ty(F.getContext()),
+            APInt(64, getTypeIDFor(ITP->getDestTy())));
+        auto auted = Builder.CreateCall(autcall, {ITP, mod}, "");
+        dyn_cast<PHINode>(calledValue)->setIncomingValue(1, auted);
+        goto handle_args;
+      }
+    }
+#if CHECK_PAC_BEFORE_AUT == 1
     if (!funcAutFP) {
-      auto M = F.getParent();
-      auto &C = M->getContext();
-      Type *int64Ty = Type::getInt64Ty(C);
       std::vector<Type *> args(2, int64Ty);
       FunctionType *prototype = FunctionType::get(int64Ty, args, false);
       funcAutFP = Function::Create(prototype, Function::PrivateLinkage,
@@ -221,23 +301,30 @@ bool OptCpiPass::handleCallInsn(Function &F, Instruction &I,
       BuilderAut.CreateRet(auted);
       BuilderRet.CreateRet(funcAutFP->getArg(0));
     }
-    /* auto paced = createPACIntrinsic(F, I, calledValue, calledValueType, */
-    /*                                 Intrinsic::pa_autcall); */
+
     IRBuilder<> BuilderBefore(&I);
     auto mod =
         Constant::getIntegerValue(Type::getInt64Ty(F.getContext()),
                                   APInt(64, getTypeIDFor(calledValueType)));
+
     auto autFpCI = BuilderBefore.CreateCall(funcAutFP, {calledValue, mod});
+
     CI->setCalledOperand(autFpCI);
+#else
+    auto paced = createPACIntrinsic(F, I, calledValue, calledValueType,
+                                    Intrinsic::pa_autcall);
+    CI->setCalledOperand(paced);
+#endif
   }
 
 handle_args:
   // handle externel function call
   if (calledFunc != nullptr) {
-    /* outs() << getPassName() << ": " << calledFunc->getName() << '\n'; */
-    if (calledFunc->getName().contains("api_") ||
-        calledFunc->getName().contains("atexit"))
+    if (isSkippedFuncs(calledFunc->getName())) {
+      /* DEBUG(outs() << getPassName() << ": skip " << calledFunc->getName() */
+      /*              << '\n'); */
       goto out;
+    }
 
     if (TLI)
       isLibFn = TLI->getLibFunc(calledFunc->getName(), Func);
@@ -259,12 +346,10 @@ handle_args:
                                 : arg->getType();
           auto paced =
               createPACIntrinsic(F, I, VInput, VTypeInput, Intrinsic::pa_autia);
-          /* auto paced = genPACedValue(F, I, arg, Intrinsic::pa_autia); */
           CI->setArgOperand(i, paced);
         }
       }
     } else if (calledFunc->getName().contains("sigaction")) {
-      /* outs() << "Find sigaction()\n"; */
       auto arg = dyn_cast<CallInst>(&I)->getArgOperand(1);
       const auto argTy =
           dyn_cast<StructType>(arg->getType()->getPointerElementType());
@@ -272,15 +357,11 @@ handle_args:
       IRBuilder<> BuilderBefore(&I);
       IRBuilder<> BuilderAfter(I.getNextNode());
 
-      auto M = F.getParent();
-      auto &C = M->getContext();
-      Type *voidTy = Type::getVoidTy(C);
-      Type *int64Ty = Type::getInt64Ty(C);
       std::vector<Type *> args(1, int64Ty);
-
       FunctionType *prototype = FunctionType::get(voidTy, args, false);
       Function *funcAut =
           Function::Create(prototype, Function::PrivateLinkage, "__pac_aut", M);
+
       funcAut->addFnAttr("no-pac", "true");
       funcAut->addFnAttr("noinline", "true");
 
@@ -294,22 +375,19 @@ handle_args:
       BB = BasicBlock::Create(C, "entry", funcSign);
       IRBuilder<> BuilderSignEntry(BB);
 
-      /* outs() << "Value: " << *arg << '\n'; */
-      /* outs() << "Type: " << *argTy << "\n\n"; */
+      /* DEBUG(outs() << "Value: " << *arg << '\n'); */
+      /* DEBUG(outs() << "Type: " << *argTy << "\n"); */
       assert(argTy != nullptr);
 
       for (auto i = 0U; i < argTy->getNumElements(); ++i) {
-        /* outs() << i << "th element\n"; */
         auto elementTy = argTy->getElementType(i);
-        /* outs() << "Element Type: " << *elementTy << '\n'; */
-        /* outs() << "isPointerTy: " << elementTy->isPointerTy() << '\n'; */
-        /* outs() << "isFunctionTy: " << elementTy->isFunctionTy() << '\n'; */
-        /* outs() << "isStructTy: " << elementTy->isStructTy() << "\n\n"; */
+        /* DEBUG(outs() << "Element Type: " << *elementTy << '\n'); */
 
         if (elementTy->isStructTy()) { // union __sigaction_handler
           Type *intraElementTy =
               dyn_cast<StructType>(elementTy)->getElementType(0);
-          /* outs() << "Intra Element Type: " << *intraElementTy << "\n"; */
+          /* DEBUG(outs() << "Intra Element Type: " << *intraElementTy << "\n");
+           */
 
           if (intraElementTy->isPointerTy() &&
               intraElementTy->getPointerElementType()->isFunctionTy()) {
@@ -318,6 +396,7 @@ handle_args:
 
             LoadInst *loaded =
                 BuilderAutEntry.CreateLoad(intraElementTy, funcAut->getArg(0));
+            // Check if sa_handler is SIG_DFL/SIG_IGN
             Value *cmp = BuilderAutEntry.CreateICmpUGT(
                 loaded, ConstantInt::get(Type::getInt64Ty(C), 2));
             auto autBB = BasicBlock::Create(C, "aut", funcAut);
@@ -327,19 +406,14 @@ handle_args:
             IRBuilder<> BuilderAut(autBB);
             IRBuilder<> BuilderRet(retBB);
 
-            /* outs() << "Instrumentations before call: \n"; */
-            /* auto casted = BuilderAut.CreateBitCast( */
-            /*     funcAut->getArg(0), intraElementTy->getPointerTo()); */
-            /* outs() << *casted << '\n'; */
             loaded = BuilderAut.CreateLoad(intraElementTy, funcAut->getArg(0));
-            /* outs() << *loaded << '\n'; */
 
             // Insert PAC intrinsic
-            auto paced =
+            auto auted =
                 createPACIntrinsic(&BuilderAut, *(F.getParent()), loaded,
                                    voidTy, Intrinsic::pa_autia);
 
-            BuilderAut.CreateStore(paced, funcAut->getArg(0));
+            BuilderAut.CreateStore(auted, funcAut->getArg(0));
             BuilderAut.CreateRetVoid();
             BuilderRet.CreateRetVoid();
 
@@ -348,6 +422,7 @@ handle_args:
 
             loaded = BuilderSignEntry.CreateLoad(intraElementTy,
                                                  funcSign->getArg(0));
+            // Check if sa_handler is SIG_DFL/SIG_IGN
             cmp = BuilderSignEntry.CreateICmpUGT(
                 loaded, ConstantInt::get(Type::getInt64Ty(C), 2));
             auto signBB = BasicBlock::Create(C, "sign", funcSign);
@@ -357,37 +432,25 @@ handle_args:
             IRBuilder<> BuilderSign(signBB);
             IRBuilder<> BuilderSignRet(retBB);
 
-            /* outs() << "Instrumentations after call: \n"; */
-            /* casted = BuilderSign.CreateBitCast(funcSign->getArg(0), */
-            /*                                    intraElementTy->getPointerTo());
-             */
-            /* outs() << *casted << '\n'; */
             loaded =
                 BuilderSign.CreateLoad(intraElementTy, funcSign->getArg(0));
-            /* outs() << *loaded << '\n'; */
 
-            paced = createPACIntrinsic(&BuilderSign, *(F.getParent()), loaded,
-                                       voidTy, Intrinsic::pa_pacia);
+            auto paced =
+                createPACIntrinsic(&BuilderSign, *(F.getParent()), loaded,
+                                   voidTy, Intrinsic::pa_pacia);
             BuilderSign.CreateStore(paced, funcSign->getArg(0));
             BuilderSign.CreateRetVoid();
             BuilderSignRet.CreateRetVoid();
           }
         }
-        /* outs() << "------------------------\n"; */
       }
     } else if (calledFunc->getName().equals("__dynamic_cast") ||
                calledFunc->getName().contains("basic_streambuf")) {
-      /* outs() << getPassName() << "little bitch\n"; */
       IRBuilder<> BuilderBefore(&I);
       IRBuilder<> BuilderAfter(I.getNextNode());
 
       auto arg = CI->getArgOperand(0);
       if (!funcAutVTablePara && !funcSignVTablePara) {
-
-        auto M = F.getParent();
-        auto &C = M->getContext();
-        Type *voidTy = Type::getVoidTy(C);
-        Type *int64Ty = Type::getInt64Ty(C);
         std::vector<Type *> args(1, int64Ty);
         FunctionType *prototype = FunctionType::get(voidTy, args, false);
         funcAutVTablePara = Function::Create(
@@ -458,6 +521,56 @@ handle_args:
 
       BuilderBefore.CreateCall(funcAutVTablePara, {arg});
       BuilderAfter.CreateCall(funcSignVTablePara, {arg});
+    } else if (calledFunc->getName().contains("dlsym")) {
+      outs() << getPassName() << ": little bitch\n";
+      Instruction *str = &I;
+
+      do {
+        str = str->getNextNode();
+        outs() << getPassName() << ": " << *str << '\n';
+      } while (!isa<StoreInst>(str));
+      outs() << getPassName() << ": " << *str->getOperand(0)->getType() << '\n';
+
+      if (!funcSignDlsym) {
+        std::vector<Type *> args(2, int64Ty);
+        FunctionType *prototype = FunctionType::get(int64Ty, args, false);
+        funcSignDlsym = Function::Create(prototype, Function::PrivateLinkage,
+                                         "__pac_sign_", M);
+
+        funcSignDlsym->addFnAttr("no-pac", "true");
+        funcSignDlsym->addFnAttr("inline", "true");
+        auto BB = BasicBlock::Create(C, "entry", funcSignDlsym);
+        IRBuilder<> BuilderSignEntry(BB);
+
+        auto cmp = BuilderSignEntry.CreateICmpEQ(funcSignDlsym->getArg(0),
+                                                 ConstantInt::get(int64Ty, 0));
+
+        auto signBB = BasicBlock::Create(C, "sign", funcSignDlsym);
+        auto retBB = BasicBlock::Create(C, "ret", funcSignDlsym);
+        BuilderSignEntry.CreateCondBr(cmp, retBB, signBB);
+
+        IRBuilder<> BuilderSign(signBB);
+        IRBuilder<> BuilderRet(retBB);
+
+        auto autcall = Intrinsic::getDeclaration(
+            M, Intrinsic::pa_pacia, {funcSignDlsym->getArg(0)->getType()});
+        auto paced = BuilderSign.CreateCall(
+            autcall, {funcSignDlsym->getArg(0), funcSignDlsym->getArg(1)}, "");
+
+        BuilderSign.CreateRet(paced);
+        BuilderRet.CreateRet(funcSignDlsym->getArg(0));
+      }
+
+      IRBuilder<> Builder(str);
+      /* auto loaded = */
+      /*     Builder.CreateLoad(str->getOperand(0)->getType(),
+       * str->getOperand(0)); */
+      auto mod = Constant::getIntegerValue(
+          Type::getInt64Ty(F.getContext()),
+          APInt(64, getTypeIDFor(str->getOperand(0)->getType())));
+      auto sign = Builder.CreateCall(
+          funcSignDlsym, {str->getOperand(0), mod});
+      str->setOperand(0, sign);
     } else {
       // sign args which are code pointers
       for (unsigned int i = 0; i < CI->arg_size(); ++i) {
@@ -481,6 +594,27 @@ out:
   return true;
 }
 
+bool OptCpiPass::handleInvokeInsn(Function &F, Instruction &I) {
+  auto II = dyn_cast<InvokeInst>(&I);
+  auto calledFunc = II->getCalledFunction();
+  unsigned argsz = II->arg_size();
+
+  if (calledFunc && isSkippedFuncs(calledFunc->getName())) {
+    DEBUG(outs() << getPassName() << ": skip" << calledFunc->getName() << '\n');
+    goto out;
+  }
+
+  for (unsigned i = 0; i < argsz; ++i) {
+    auto arg = II->getArgOperand(i);
+    auto paced = genPACedValue(F, I, arg, Intrinsic::pa_pacia);
+    if (paced != nullptr)
+      II->setArgOperand(i, paced);
+  }
+
+out:
+  return true;
+}
+
 CallInst *OptCpiPass::genPACedValue(Function &F, Instruction &I, Value *V,
                                     Intrinsic::ID intrinsicID) {
   // We need to handle two types of function pointer arguments:
@@ -496,6 +630,9 @@ CallInst *OptCpiPass::genPACedValue(Function &F, Instruction &I, Value *V,
                     ? dyn_cast<BitCastOperator>(V)->getOperand(0)
                     : V;
 
+  /* DEBUG(outs() << getPassName() << ": " << *VTypeInput << '\n'); */
+  /* DEBUG(outs() << getPassName() << ": " << *VInput << '\n'); */
+
   // We can skip if the operand is not function address
   if (!VTypeInput->isPointerTy() || !isa<Function>(VInput) ||
       dyn_cast<Function>(VInput)->isIntrinsic())
@@ -504,10 +641,11 @@ CallInst *OptCpiPass::genPACedValue(Function &F, Instruction &I, Value *V,
   // V->getType and VTypeInput should match unless bitcast
   assert((isa<BitCastOperator>(V) || V->getType() == VTypeInput));
 
+
   // Create PA intrinsic (pacia)
-  /* outs() << getPassName() << ":\n\t" << F.getName() */
+  /* DEBUG(outs() << getPassName() << ":\n\t" << F.getName() */
   /*        << ":\n\t" << I << '\n' */
-  /*        << "Create pacia intrinsic here\n"; */
+  /*        << "Create pacia intrinsic here\n"); */
 
   if (isa<StoreInst>(&I)) {
     auto dest = dyn_cast<StoreInst>(&I)->getPointerOperand();
@@ -525,22 +663,21 @@ CallInst *OptCpiPass::genPACedValue(Function &F, Instruction &I, Value *V,
     }
   }
 
+  // Workaround(Apache httpd)
   if (isa<CallInst>(&I)) {
     auto CI = dyn_cast<CallInst>(&I);
     auto calledFunc = CI->getCalledFunction();
-    if (calledFunc && calledFunc->getName().contains("apr_signal")) {
-      /* outs() << "fucking asshole\n"; */
+    if (calledFunc && calledFunc->getName().contains("apr_signal"))
       VTypeInput = Type::getVoidTy(F.getContext());
-    }
   }
 
-  outs() << getPassName() << ": Need PAC\n";
+  /* DEBUG(outs() << getPassName() << ": Need PAC\n"); */
   return createPACIntrinsic(F, I, V, VTypeInput, intrinsicID);
 }
 
 bool OptCpiPass::regenPACedValue(Function &F, Instruction &I, Value *V,
                                  Intrinsic::ID intrinsicID) {
-  /* outs() << *V << '\n'; */
+  /* DEBUG(outs() << *V << '\n'); */
   if (!isa<BitCastOperator>(V) || dyn_cast<BitCastOperator>(V)
                                       ->getDestTy()
                                       ->getPointerElementType()
@@ -555,21 +692,14 @@ bool OptCpiPass::regenPACedValue(Function &F, Instruction &I, Value *V,
       !VTypeInput->getPointerElementType()->isFunctionTy())
     return false;
 
-  /* outs() << getPassName() << ":\n" << I */
-  /*        << "\nre-generate PAC\n"; */
+  /* DEBUG(outs() << getPassName() << ":\n" << I */
+  /*        << "\nre-generate PAC\n"); */
 
   auto nextI = I.getNextNode();
   auto BB = nextI->getParent();                // BB before and contains store
   auto successor = BB->splitBasicBlock(nextI); // BB after store
   auto newBB = BasicBlock::Create(F.getContext(), "rePAC", &F);
   auto lastInst = BB->getTerminator();
-
-  /* outs() << "Current BB:\n" << *BB << '\n'; */
-  /* outs() << "Successor:\n" << *successor << '\n'; */
-  /* outs() << "Inst:\n" << I << '\n'; */
-  /* outs() << "Next Inst: " << *nextI << '\n'; */
-  /* outs() << *newBB << '\n'; */
-  /* outs() << *lastInst << '\n'; */
 
   lastInst->eraseFromParent();
 
@@ -584,7 +714,6 @@ bool OptCpiPass::regenPACedValue(Function &F, Instruction &I, Value *V,
 
   Value *unpaced =
       Builder2.CreateAnd(VInput, APInt(64, 281474976710655)); // 48-bits
-  /* outs() << *unpaced << '\n'; */
 
   auto paced = createPACIntrinsic(&Builder2, *(F.getParent()), unpaced,
                                   dyn_cast<BitCastOperator>(V)->getDestTy(),
@@ -593,7 +722,14 @@ bool OptCpiPass::regenPACedValue(Function &F, Instruction &I, Value *V,
   Builder2.CreateStore(paced, dyn_cast<StoreInst>(&I)->getPointerOperand());
   Builder2.CreateBr(successor);
 
-  /* outs() << "new BB1:\n" << *newBB << '\n'; */
-
   return true;
+}
+
+bool OptCpiPass::isSkippedFuncs(const StringRef &funcName) {
+  for (const std::string &skippedFunc : skippedFunctions) {
+    if (funcName.contains(skippedFunc)) {
+      return true;
+    }
+  }
+  return false;
 }
